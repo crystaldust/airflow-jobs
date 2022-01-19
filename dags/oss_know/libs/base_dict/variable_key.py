@@ -29,3 +29,5 @@ SYNC_PROFILES_TASK_NUM = "sync_profiles_task_num"
 LOCATIONGEO_TOKEN = "LocationGeo_token"
 
 NEED_ALTER_CK_TABLE_INFOS = "alter_table_infos"
+
+MAIL_LISTS = "mail_lists"
