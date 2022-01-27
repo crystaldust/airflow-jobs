@@ -1,4 +1,10 @@
 import re
+from datetime import datetime
+
+import redis
+import urllib3
+from opensearchpy import OpenSearch
+from tenacity import *
 
 import geopy
 import redis
@@ -172,3 +178,7 @@ def infer_country_company_geo_insert_into_profile(latest_github_profile):
             f"error occurs when inferring information by github profile, exception message: {e},the type of exception: {type(e)}")
         for inferrer in inferrers:
             latest_github_profile[inferrer[0]] = None
+
+
+def get_updated_at():
+    return int(datetime.now().timestamp() * 1000)
