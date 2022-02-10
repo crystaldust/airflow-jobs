@@ -188,9 +188,19 @@ def sync_archive(opensearch_conn_info, **maillist_params):
         project_name = maillist_params['project_name']
         list_name = maillist_params['list_name']
         url_prefix = maillist_params['url_prefix']
-        repo = MBox(uri=url_prefix, dirpath=path.join(project_name, list_name))
+        if 'mbox_path' in maillist_params and maillist_params['mbox_path']:
+            dirpath = maillist_params['mbox_path']
+        else:
+            dirpath = path.join(project_name, list_name)
+        repo = MBox(uri=url_prefix, dirpath=dirpath)
         ocean_backend = MBoxOcean(None)
         enrich_backend = OSSKnowMBoxEnrich(project_name, list_name)
+
+    # try:
+    #     for msg in repo.fetch():
+    #         print(msg)
+    # except Exception as e:
+    #     print(e)
 
     os_user = opensearch_conn_info["USER"]
     os_pass = opensearch_conn_info["PASSWD"]
@@ -203,6 +213,10 @@ def sync_archive(opensearch_conn_info, **maillist_params):
     elastic_ocean = get_elastic(os_url, OPENSEARCH_INDEX_MAILLISTS, clear_existing_indices, ocean_backend)
     ocean_backend.set_elastic(elastic_ocean)
 
+    from dateutil.parser import ParserError
+    from perceval.backends.core.mbox import InvalidDateError
+
+    # try:
     num_raw = _data2es(repo.fetch(), ocean_backend, project_name, list_name)
     logger.info(f'{num_raw} records for mail list {project_name}/{list_name}')
 
@@ -214,6 +228,12 @@ def sync_archive(opensearch_conn_info, **maillist_params):
     # TODO What does the param [sortinghat] and [projects] do here?
     num_enriched = enrich_backend.enrich_items(ocean_backend)
     logger.info(f'{num_enriched} enriched records for mail list {project_name}/{list_name}')
+
+    # except (ParserError, InvalidDateError) as e:
+    # except InvalidDateError as e:
+    #     print(type(e))
+    #     logger.warning(f'Got exception: {e}')
+
 
 
 # The 2 helpers are yanked from:
@@ -242,7 +262,7 @@ def _ocean_item(item, ocean):
 
 def _data2es(items, ocean, project_name, mail_list_name):
     items_pack = []  # to feed item in packs
-
+    inserted = 0
     for item in items:
         item = _ocean_item(item, ocean)
         # By <juzhen@huawei.com> Insert the customized search_key:
@@ -254,9 +274,9 @@ def _data2es(items, ocean, project_name, mail_list_name):
         }
         # End::Insert the customized search_key:
         if len(items_pack) >= ocean.elastic.max_items_bulk:
-            ocean._items_to_es(items_pack)
+            inserted += ocean._items_to_es(items_pack)
             items_pack = []
         items_pack.append(item)
-    inserted = ocean._items_to_es(items_pack)
+    inserted += ocean._items_to_es(items_pack)
 
     return inserted
