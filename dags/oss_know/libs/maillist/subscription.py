@@ -1,4 +1,5 @@
-from imap_tools import MailBox
+from imap_tools import MailBox, MailMessage
+
 import mailbox
 from oss_know.libs.util.base import get_opensearch_client
 from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_MAILLISTS
@@ -6,6 +7,7 @@ import os
 # Debug in local env(with proxy)
 import socks
 import imaplib
+
 proxy_host = '192.168.8.10'
 proxy_port = 7891
 socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, proxy_host, proxy_port)
@@ -14,10 +16,24 @@ socks.wrapmodule(imaplib)
 
 from .archive import sync_archive
 
-def sync_imap_subscription(opensearch_conn_info, email_address, password, imap_host, imap_port=993, folder=None):
+
+# TODO Possible solution:
+# Store different project/maillist emails into different folder
+# project_name and maillist_name can be uniquely fetched from the email folder name
+def infer_project_info(imap_message:MailMessage):
+    # TODO Try to find project info from the addrs?
+    # addrs = set(imap_message.to)
+    # addrs.update(imap_message.cc)
+    # addrs.update(imap_message.bcc)
+
     project_name = 'etcd'
-    list_name = 'etcd'
-    prefix = f'{project_name}/{list_name}'
+    maillist_name = 'etcd'
+    return project_name, maillist_name
+
+
+def sync_imap_subscription(opensearch_conn_info, email_address, password, imap_host, imap_port=993, folder=None):
+    project_name, maillist_name = infer_project_info(None)
+    prefix = f'{project_name}/{maillist_name}'
 
     opensearch_client = get_opensearch_client(opensearch_conn_info)
     maillist_result = opensearch_client.search(index=f'{OPENSEARCH_INDEX_MAILLISTS}_enriched', body={
@@ -25,10 +41,10 @@ def sync_imap_subscription(opensearch_conn_info, email_address, password, imap_h
             "bool": {
                 "must": [
                     {
-                        "match": {"search_key.project_name": "etcd"}
+                        "match": {"search_key.project_name": project_name}
                     },
                     {
-                        "match": {"search_key.mail_list_name": "etcd"}
+                        "match": {"search_key.mail_list_name": maillist_name}
                     }
                 ]
             }
@@ -64,13 +80,11 @@ def sync_imap_subscription(opensearch_conn_info, email_address, password, imap_h
             mbox.add(mbox_message)
             print(msg.subject, mbox_message['Message-ID'], last_inserted_message_id)
 
-
         # for msg in mbox.items():
         #     print(msg)
         print(len(mbox.items()))
 
         mbox.close()
 
-        sync_archive(opensearch_conn_info, archive_type='mbox', list_name=list_name, project_name=project_name,
+        sync_archive(opensearch_conn_info, archive_type='mbox', list_name=maillist_name, project_name=project_name,
                      clear_exist=False, url_prefix='just_test', mbox_path=mbox_filepath)
-
