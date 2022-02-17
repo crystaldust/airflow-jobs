@@ -4,6 +4,7 @@ import time
 import numpy
 import pandas as pd
 import psycopg2
+from clickhouse_driver.errors import ServerException
 from loguru import logger
 from opensearchpy import helpers
 from airflow.exceptions import AirflowException
@@ -140,6 +141,7 @@ def transfer_data(clickhouse_server_info, opensearch_index, table_name, opensear
                 result = ck.execute(sql, [dict_data])
             except KeyError as error:
                 logger.error(f'插入数据发现错误 {error}')
+                logger.error(f'出现问题的数据是{dict_data}')
                 postgres_conn = get_postgres_conn()
                 sql = '''INSERT INTO os_ck_errar(
                                     index, data) 
@@ -153,10 +155,26 @@ def transfer_data(clickhouse_server_info, opensearch_index, table_name, opensear
                     cur.close()
                 except (psycopg2.DatabaseError) as error:
                     logger.error(f"psycopg2.DatabaseError:{error}")
-
-                finally:
-                    if postgres_conn is not None:
-                        postgres_conn.close()
+            except ServerException as error:
+                logger.error(f'插入数据发现错误 {error}')
+                logger.error(f'出现问题的数据是{dict_data}')
+                # postgres_conn = get_postgres_conn()
+                # sql = '''INSERT INTO os_ck_errar(
+                #                                     index, data)
+                #                                     VALUES (%s, %s);'''
+                # try:
+                #     cur = postgres_conn.cursor()
+                #     os_index = table_name
+                #     error_data = json.dumps(os_data['_source'])
+                #     cur.execute(sql, (os_index, error_data))
+                #     postgres_conn.commit()
+                #     cur.close()
+                # except (psycopg2.DatabaseError) as error:
+                #     logger.error(f"psycopg2.DatabaseError:{error}")
+                #
+                # finally:
+                #     if postgres_conn is not None:
+                #         postgres_conn.close()
 
     # airflow dag的中断
     except AirflowException as error:
