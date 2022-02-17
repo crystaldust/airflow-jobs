@@ -45,7 +45,34 @@ def do_get_result(req_session, url, headers, params):
         logger.warning(f"headers:{headers}")
         logger.warning(f"params:{params}")
         logger.warning(f"text:{res.text}")
-        raise HttpGetException('http get 失败！')
+        raise HttpGetException('http get 失败！', res.status_code)
+    return res
+
+
+@retry(stop=stop_after_attempt(3),
+       wait=wait_fixed(1),
+       retry=retry_if_exception_type(urllib3.exceptions.HTTPError))
+def do_get_github_result(req_session, url, headers, params, github_tokens_iter):
+    # 尝试处理网络请求错误
+    # session.mount('http://', HTTPAdapter(
+    #     max_retries=Retry(total=5, method_whitelist=frozenset(['GET', 'POST']))))  # 设置 post()方法进行重访问
+    # session.mount('https://', HTTPAdapter(
+    #     max_retries=Retry(total=5, method_whitelist=frozenset(['GET', 'POST']))))  # 设置 post()方法进行重访问
+    # raise urllib3.exceptions.SSLError('获取github commits 失败！')
+
+    token = next(github_tokens_iter)
+    logger.info(f'getting github result with toekn {token}')
+    headers.update({'Authorization': 'token %s' % token })
+    res = req_session.get(url, headers=headers, params=params)
+    if 400 <= res.status_code <= 499:
+        logger.warning(f'Http 4xx error: {res.status_code}, try next token')
+        raise urllib3.exceptions.HTTPError()
+    elif 300 <= res.status_code <= 399 or res.status_code >= 500:
+        logger.warning(f"url:{url}")
+        logger.warning(f"headers:{headers}")
+        logger.warning(f"params:{params}")
+        logger.warning(f"text:{res.text}")
+        raise HttpGetException('http get 失败！', res.status_code)
     return res
 
 

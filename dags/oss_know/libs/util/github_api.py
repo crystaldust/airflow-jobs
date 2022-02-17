@@ -1,6 +1,6 @@
 import copy
 
-from oss_know.libs.util.base import do_get_result
+from oss_know.libs.util.base import do_get_result, do_get_github_result
 from oss_know.libs.util.log import logger
 
 
@@ -22,10 +22,10 @@ class GithubAPI:
         url = "https://api.github.com/repos/{owner}/{repo}/commits".format(
             owner=owner, repo=repo)
         headers = copy.deepcopy(self.github_headers)
-        headers.update({'Authorization': 'token %s' % next(github_tokens_iter)})
+        #headers.update({'Authorization': 'token %s' % next(github_tokens_iter)})
         params = {'per_page': 100, 'page': page, 'since': since, 'until': until}
 
-        return do_get_result(http_session, url, headers, params)
+        return do_get_github_result(http_session, url, headers, params, github_tokens_iter)
 
     def get_github_issues(self, http_session, github_tokens_iter, owner, repo, page, since):
         url = "https://api.github.com/repos/{owner}/{repo}/issues".format(
@@ -72,18 +72,18 @@ class GithubAPI:
         url = "https://api.github.com/repos/{owner}/{repo}/issues/{number}/timeline".format(
             owner=owner, repo=repo, number=number)
         headers = copy.deepcopy(self.github_headers)
-        headers.update({'Authorization': 'token %s' % next(github_tokens_iter)})
+        #  headers.update({'Authorization': 'token %s' % next(github_tokens_iter)})
         params = {'per_page': 100, 'page': page}
-        res = do_get_result(http_session, url, headers, params)
+        res = do_get_github_result(http_session, url, headers, params, github_tokens_iter)
         return res
 
     def get_github_issues_comments(self, http_session, github_tokens_iter, owner, repo, number, page):
         url = "https://api.github.com/repos/{owner}/{repo}/issues/{number}/comments".format(
             owner=owner, repo=repo, number=number)
         headers = copy.deepcopy(self.github_headers)
-        headers.update({'Authorization': 'token %s' % next(github_tokens_iter)})
+        #  headers.update({'Authorization': 'token %s' % next(github_tokens_iter)})
         params = {'per_page': 100, 'page': page}
-        res = do_get_result(http_session, url, headers, params)
+        res = do_get_github_result(http_session, url, headers, params, github_tokens_iter)
         return res
 
     def get_github_pull_requests(self, http_session, github_tokens_iter, owner, repo, page, since):
