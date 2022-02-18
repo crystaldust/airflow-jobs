@@ -4,6 +4,7 @@ import time
 import numpy
 import pandas as pd
 import psycopg2
+from clickhouse_driver.columns.exceptions import StructPackException
 from clickhouse_driver.errors import ServerException
 from loguru import logger
 from opensearchpy import helpers
@@ -59,6 +60,8 @@ def alter_data_type(row):
         row = "null"
     elif isinstance(row, bool):
         row = int(row)
+    elif isinstance(row, numpy.float64):
+        row = float(row)
     else:
         pass
     return row
@@ -176,12 +179,16 @@ def transfer_data(clickhouse_server_info, opensearch_index, table_name, opensear
                 #     if postgres_conn is not None:
                 #         postgres_conn.close()
 
+
     # airflow dag的中断
     except AirflowException as error:
         raise AirflowException(f'airflow interrupt {error}')
     except NotFoundError as error:
 
         raise NotFoundError(f'scroll error raise HTTP_EXCEPTIONS.get(status_code, TransportError)(opensearchpy.exceptions.NotFoundError: NotFoundError(404, "search_phase_execution_exception", "No search context found for id [631]"){error}')
+    # except Exception as error:
+    #     logger.error(f'插入数据发现错误 {error}')
+    #     logger.error(f'出现问题的数据是{dict_data}')
     finally:
         # 将检查点放在这里插入
         ck_check_point(opensearch_client=opensearch_datas[1],

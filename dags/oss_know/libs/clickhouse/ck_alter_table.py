@@ -13,18 +13,6 @@ def clickhouse_type(data_type):
             type_init = "DateTime64(3)"
     elif isinstance(data_type, int):
         type_init = "Int64"
-    elif isinstance(data_type, float):
-        type_init = "Float64"
-    elif isinstance(data_type, list):
-        if isinstance(data_type[0], str):
-            if validate_iso8601(data_type[0]):
-                type_init = "Array(DateTime64(3))"
-            else:
-                type_init = "Array(String)"
-        elif isinstance(data_type[0], int):
-            type_init = "Array(Int64)"
-        elif isinstance(data_type, float):
-            type_init = "Array(Float64)"
     return type_init
 
 
@@ -32,8 +20,6 @@ def clickhouse_type(data_type):
 def alter_data_type(row):
     if isinstance(row, numpy.int64):
         row = int(row)
-    elif isinstance(row, numpy.float64):
-        row = float(row)
     elif isinstance(row, numpy.bool_):
         row = int(bool(row))
     elif row is None:
@@ -88,7 +74,7 @@ def create_ck_table(df,
         if index.startswith('raw_data'):
             index = index[9:]
         index = index.replace('.', '__')
-        # 设定一个初始的类型
+        # ck中单个字段的字段名称和字段的类型 拼接的字符串
         data_type_outer = f"`{index}` String"
         # 将数据进行类型的转换，有些类型但是pandas中独有的类型
         row = alter_data_type(row)
@@ -117,14 +103,12 @@ def create_ck_table(df,
                     one_of_field = alter_data_type(row[0])
                     ck_type = clickhouse_type(one_of_field)
                     data_type_outer = f"`{index}` Array({ck_type})"
-        # # 不是列表判断是否为int类型 可以不用判断是否为字符串类型, 默认是字符串类型
-        # elif isinstance(row, int):
-        #     data_type_outer = f"`{index}` Int64"
-        # elif isinstance(row, str):
-        #     if validate_iso8601(row):
-        #         data_type_outer = f"`{index}` DateTime64(3)"
-        else:
-            data_type_outer = f"`{index}` {clickhouse_type(row)}"
+        # 不是列表判断是否为int类型 可以不用判断是否为字符串类型, 默认是字符串类型
+        elif isinstance(row, int):
+            data_type_outer = f"`{index}` Int64"
+        elif isinstance(row, str):
+            if validate_iso8601(row):
+                data_type_outer = f"`{index}` DateTime64(3)"
         # 将所有的类型都放入这个存储器列表
         ck_data_type.append(data_type_outer)
         # dict1[index] = row
