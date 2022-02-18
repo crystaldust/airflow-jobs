@@ -1,5 +1,5 @@
 import http
-from datetime import datetime
+from dateutil.parser import parse
 import requests
 import shutil
 import gzip
@@ -41,6 +41,8 @@ class OSSKnowMBoxEnrich(MBoxEnrich):
             'mail_list_name': self.mail_list_name,
             'updated_at': get_updated_at()
         }
+        # TODO Might be KeyError or TypeError(refering None)?
+        eitem['Date_tz'] = item['data']['Date_tz']
 
         for essential_key in OSSKnowMBoxEnrich.ESSENTIAL_KEYS:
             if essential_key in item:
@@ -214,12 +216,16 @@ def _ocean_item(item, ocean):
     # TODO By <juzhen@huawei.com>: We may not need the expansions here
     # Hack until we decide when to drop this field
     if 'updated_on' in item:
-        updated = datetime.fromtimestamp(item['updated_on'])
-        item['metadata__updated_on'] = updated.isoformat()
-    if 'timestamp' in item:
-        ts = datetime.fromtimestamp(item['timestamp'])
-        item['metadata__timestamp'] = ts.isoformat()
+        item['metadata__updated_on'] = datetime.utcfromtimestamp(int(item['updated_on'])).strftime('%Y-%m-%dT%H:%M:%SZ')
 
+    if 'timestamp' in item:
+        item['metadata__timestamp'] = datetime.utcfromtimestamp(int(item['timestamp'])).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+    datetime_obj = parse(item['data']['Date'])
+    tz_num = int(datetime_obj.utcoffset().total_seconds() / 3600)
+    item['data']['Date'] = datetime_obj.strftime('%Y-%m-%dT%H:%M:%SZ')
+    item['data']['Date_tz'] = tz_num
     # the _fix_item does not apply to the test data for Twitter
     try:
         ocean._fix_item(item)
