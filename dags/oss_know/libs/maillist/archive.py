@@ -152,7 +152,7 @@ def sync_archive(opensearch_conn_info, **maillist_params):
     project_name = maillist_params['project_name']
     list_name = maillist_params['list_name']
 
-    clear_existing_indices = True
+    clear_existing_indices = False
     if 'clear_exist' in maillist_params:
         clear_existing_indices = bool(maillist_params['clear_exist'])
 
