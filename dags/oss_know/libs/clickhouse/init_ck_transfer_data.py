@@ -251,7 +251,7 @@ def get_data_from_opensearch(index, opensearch_conn_datas):
                            },
                            index=index,
                            size=5000,
-                           scroll="20m",
+                           scroll="40m",
                            request_timeout=100)
     return results, opensearch_client
 
