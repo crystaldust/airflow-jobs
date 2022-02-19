@@ -61,7 +61,8 @@ def validate_iso8601(str_val):
 # 这里判断字符串是不是标准的日期格式
 def datetime_valid(dt_str):
     try:
-        datetime.fromisoformat(dt_str)
+        # datetime.fromisoformat(dt_str)
+        datetime.datetime.strptime(dt_str, '%Y-%m-%dT%H:%M:%SZ')
     except:
         return False
     return True

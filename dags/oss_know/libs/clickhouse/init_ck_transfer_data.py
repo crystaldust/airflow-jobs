@@ -4,6 +4,7 @@ import time
 import numpy
 import pandas as pd
 import psycopg2
+import warnings
 from clickhouse_driver.columns.exceptions import StructPackException
 from clickhouse_driver.errors import ServerException
 from loguru import logger
@@ -105,7 +106,14 @@ def transfer_data_special(clickhouse_server_info, opensearch_index, table_name, 
     ck.close()
 
 
+warnings.filterwarnings('ignore')
+
+
 def transfer_data(clickhouse_server_info, opensearch_index, table_name, opensearch_conn_datas):
+    # if opensearch_index == 'maillists' or opensearch_index == 'maillists_enriched':
+    #     settings = {'strings_encoding': 'unicode_escape'}
+    # else:
+    #     settings = {'strings_encoding': 'utf-8'}
     ck = CKServer(host=clickhouse_server_info["HOST"],
                   port=clickhouse_server_info["PORT"],
                   user=clickhouse_server_info["USER"],
@@ -121,7 +129,11 @@ def transfer_data(clickhouse_server_info, opensearch_index, table_name, opensear
             updated_at = os_data["_source"]["search_key"]["updated_at"]
             if updated_at > max_timestamp:
                 max_timestamp = updated_at
-            df = pd.json_normalize(os_data["_source"])
+            df_data = os_data["_source"]
+            # encode_json = json.dumps(df_data)
+            # decode_dict = json.loads(encode_json)
+
+            df = pd.json_normalize(df_data)
             dict_data = parse_data(df)
             except_fields = []
             for field in fields:
@@ -137,11 +149,13 @@ def transfer_data(clickhouse_server_info, opensearch_index, table_name, opensear
                 sql = f"INSERT INTO {table_name} (* {except_fields}) VALUES"
             else:
                 sql = f"INSERT INTO {table_name} VALUES"
-            count += 1
-            if count % 5000 == 0:
-                logger.info(f'已经插入的数据的条数为:{count}')
+
             try:
                 result = ck.execute(sql, [dict_data])
+                count += 1
+                if count % 5000 == 0:
+                    logger.info(f'已经插入的数据的条数为:{count}')
+                # ck.execute_use_setting(sql=sql, params=[dict_data], settings=settings)
             except KeyError as error:
                 logger.error(f'插入数据发现错误 {error}')
                 logger.error(f'出现问题的数据是{dict_data}')
@@ -153,7 +167,7 @@ def transfer_data(clickhouse_server_info, opensearch_index, table_name, opensear
                     cur = postgres_conn.cursor()
                     os_index = table_name
                     error_data = json.dumps(os_data['_source'])
-                    cur.execute(sql, (os_index,error_data))
+                    cur.execute(sql, (os_index, error_data))
                     postgres_conn.commit()
                     cur.close()
                 except (psycopg2.DatabaseError) as error:
@@ -178,6 +192,21 @@ def transfer_data(clickhouse_server_info, opensearch_index, table_name, opensear
                 # finally:
                 #     if postgres_conn is not None:
                 #         postgres_conn.close()
+            except UnicodeEncodeError as error:
+                logger.error(f'插入数据发现错误 {error}')
+                logger.error(f'出现问题的数据是{dict_data}')
+                logger.error(f'舍弃这条数据')
+                # logger.error(f'使用unicode进行编码:{json.loads(json.dumps(dict_data))}')
+                # settings = {'strings_encoding': 'gbk'}
+                # try:
+                #     ck.execute_use_setting(sql=sql, params=[dict_data], settings=settings)
+                #     count += 1
+                #     if count % 5000 == 0:
+                #         logger.info(f'已经插入的数据的条数为:{count}')
+                # except UnicodeEncodeError as error:
+                #     logger.error(f'使用Unicode编码还是出现问题')
+                #     logger.error(f'插入数据发现错误 {error}')
+                #     logger.error(f'出现问题的数据是{dict_data}')
 
 
     # airflow dag的中断
@@ -185,7 +214,8 @@ def transfer_data(clickhouse_server_info, opensearch_index, table_name, opensear
         raise AirflowException(f'airflow interrupt {error}')
     except NotFoundError as error:
 
-        raise NotFoundError(f'scroll error raise HTTP_EXCEPTIONS.get(status_code, TransportError)(opensearchpy.exceptions.NotFoundError: NotFoundError(404, "search_phase_execution_exception", "No search context found for id [631]"){error}')
+        raise NotFoundError(
+            f'scroll error raise HTTP_EXCEPTIONS.get(status_code, TransportError)(opensearchpy.exceptions.NotFoundError: NotFoundError(404, "search_phase_execution_exception", "No search context found for id [631]"){error}')
     # except Exception as error:
     #     logger.error(f'插入数据发现错误 {error}')
     #     logger.error(f'出现问题的数据是{dict_data}')
