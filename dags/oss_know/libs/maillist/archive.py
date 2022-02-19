@@ -44,6 +44,11 @@ class OSSKnowMBoxEnrich(MBoxEnrich):
         # TODO Might be KeyError or TypeError(refering None)?
         eitem['Date_tz'] = item['data']['Date_tz']
 
+        for key in ['email_date', 'metadata__enriched_on', 'grimoire_creation_date']:
+            formatted_date_str, tz_num = _convert_date_str(eitem[key])
+            eitem[key] = formatted_date_str
+            eitem[f'{key}_tz'] = tz_num
+
         for essential_key in OSSKnowMBoxEnrich.ESSENTIAL_KEYS:
             if essential_key in item:
                 eitem[essential_key] = item[essential_key]
@@ -221,11 +226,10 @@ def _ocean_item(item, ocean):
     if 'timestamp' in item:
         item['metadata__timestamp'] = datetime.utcfromtimestamp(int(item['timestamp'])).strftime('%Y-%m-%dT%H:%M:%SZ')
 
-
-    datetime_obj = parse(item['data']['Date'])
-    tz_num = int(datetime_obj.utcoffset().total_seconds() / 3600)
-    item['data']['Date'] = datetime_obj.strftime('%Y-%m-%dT%H:%M:%SZ')
+    formatted_date_str, tz_num = _convert_date_str(item['data']['Date'])
+    item['data']['Date'] = formatted_date_str
     item['data']['Date_tz'] = tz_num
+
     # the _fix_item does not apply to the test data for Twitter
     try:
         ocean._fix_item(item)
@@ -258,3 +262,18 @@ def _data2es(items, ocean, project_name, mail_list_name):
     inserted = ocean._items_to_es(items_pack)
 
     return inserted
+
+
+def _convert_date_str(date_str):
+    """Get the formatted date string(%Y-%m-%dT%H:%M:%SZ) and time zone number(like: +8)
+        Parameters:
+            date_str (str): A date string, expected to be parsed by dateutil lib
+
+        Returns:
+            formatted_date_str (str): Date string formatted in "%Y-%m-%dT%H:%M:%SZ"
+            tz_num (int): The time zone number, an integer like +8, -3, 0
+    """
+    datetime_obj = parse(date_str, fuzzy=True)
+    formatted_date_str = datetime_obj.strftime('%Y-%m-%dT%H:%M:%SZ')
+    tz_num = int(datetime_obj.utcoffset().total_seconds() / 3600)
+    return formatted_date_str, tz_num
