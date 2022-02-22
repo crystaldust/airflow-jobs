@@ -7,7 +7,7 @@ from airflow.operators.python import PythonOperator
 from oss_know.libs.base_dict.variable_key import NEED_ALTER_CK_TABLE_INFOS, CLICKHOUSE_DRIVER_INFO
 
 with DAG(
-        dag_id='ck_create_tables',
+        dag_id='ck_alter_tables',
         schedule_interval=None,
         start_date=datetime(2021, 1, 1),
         catchup=False,
@@ -61,7 +61,7 @@ with DAG(
     ck_table_infos = Variable.get(NEED_ALTER_CK_TABLE_INFOS, deserialize_json=True)
     for table_info in ck_table_infos:
         op_do_ck_create_table = PythonOperator(
-            task_id=f'do_ck_create_table_table_name_{table_info["table_name"]}',
+            task_id=f'do_ck_alter_table_table_name_{table_info["table_name"]}',
             python_callable=do_ck_alter_table,
             op_kwargs={'params': table_info},
         )

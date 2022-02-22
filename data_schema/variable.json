@@ -1108,6 +1108,67 @@
       }
     }
   ],
+  "alter_table_infos": [{
+      "table_name": "gits",
+      "cluster_name": "replicated",
+      "database_name": "default",
+      "distributed_key": "search_key__updated_at",
+      "table_engine": "ReplicatedMergeTree('/clickhouse/tables/{shard}/gits','{replica}')",
+      "partition_by": "search_key__owner",
+      "order_by": [
+        "search_key__owner",
+        "search_key__repo",
+        "search_key__origin"
+      ],
+      "parse_data": {
+        "search_key": {
+          "owner": "",
+          "repo": "",
+          "origin": "",
+          "updated_at": 0
+        },
+        "raw_data": {
+          "message": "",
+          "hexsha": "",
+          "parents": [
+            "",
+            ""
+          ],
+          "author_tz": 0,
+          "committer_tz": 0,
+          "author_name": "",
+          "author_email": "",
+          "committer_name": "",
+          "committer_email": "",
+          "authored_date": "",
+          "authored_timestamp": 0,
+          "committed_date": "",
+          "committed_timestamp": 0,
+          "files": [
+            {
+              "insertions": 0,
+              "deletions": 0,
+              "lines": 0,
+              "file_name": ""
+            },
+            {
+              "insertions": 0,
+              "deletions": 0,
+              "lines": 0,
+              "file_name": ""
+            }
+          ],
+          "total": {
+            "insertions": 0,
+            "deletions": 0,
+            "lines": 0,
+            "files": 0
+          },
+          "if_merged": false,
+          "type": ""
+        }
+      }
+    }],
   "redis_client_data": {
     "HOST": "192.168.8.10",
     "PORT": "6379"
