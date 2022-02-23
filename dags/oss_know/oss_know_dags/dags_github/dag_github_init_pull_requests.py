@@ -4,6 +4,7 @@ from airflow.operators.python import PythonOperator
 
 # v0.0.1
 from oss_know.libs.base_dict.variable_key import GITHUB_TOKENS, OPENSEARCH_CONN_DATA, NEED_INIT_GITHUB_PULL_REQUESTS_REPOS
+from oss_know.libs.util.proxy import GithubTokenProxyAccommodator
 
 with DAG(
         dag_id='github_init_pull_requests_v1',
