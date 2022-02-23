@@ -23,9 +23,11 @@ class HttpGetException(Exception):
 
 
 # retry 防止SSL解密错误，请正确处理是否忽略证书有效性
-@retry(stop=stop_after_attempt(3),
+@retry(stop=stop_after_attempt(5),
        wait=wait_fixed(1),
-       retry=retry_if_exception_type(urllib3.exceptions.HTTPError))
+       retry=(retry_if_exception_type(urllib3.exceptions.HTTPError) |
+              retry_if_exception_type(urllib3.exceptions.MaxRetryError) |
+              retry_if_exception_type(requests.exceptions.ProxyError)))
 def do_get_result(req_session, url, headers, params, proxies_iter):
     # 尝试处理网络请求错误
     # session.mount('http://', HTTPAdapter(
@@ -47,7 +49,7 @@ def do_get_result(req_session, url, headers, params, proxies_iter):
             req_session.proxies[url_scheme] = f'{proxy_scheme}://{user}:{password}@{ip}:{port}'
             logger.debug(f'Request url {url} with proxy {req_session.proxies[url_scheme]}')
 
-    res = req_session.get(url, headers=headers, params=params)
+    res = req_session.get(url, headers=headers, params=params, verify=False)
     if res.status_code >= 300:
         logger.warning(f"url:{url}")
         logger.warning(f"headers:{headers}")
