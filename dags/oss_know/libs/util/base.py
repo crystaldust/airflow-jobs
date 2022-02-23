@@ -4,6 +4,7 @@ import geopy
 import redis
 import requests
 import urllib3
+from urllib.parse import urlparse
 from geopy.geocoders import GoogleV3
 from multidict import CIMultiDict
 from opensearchpy import OpenSearch
@@ -25,13 +26,25 @@ class HttpGetException(Exception):
 @retry(stop=stop_after_attempt(3),
        wait=wait_fixed(1),
        retry=retry_if_exception_type(urllib3.exceptions.HTTPError))
-def do_get_result(req_session, url, headers, params):
+def do_get_result(req_session, url, headers, params, proxies_iter):
     # 尝试处理网络请求错误
     # session.mount('http://', HTTPAdapter(
     #     max_retries=Retry(total=5, method_whitelist=frozenset(['GET', 'POST']))))  # 设置 post()方法进行重访问
     # session.mount('https://', HTTPAdapter(
     #     max_retries=Retry(total=5, method_whitelist=frozenset(['GET', 'POST']))))  # 设置 post()方法进行重访问
     # raise urllib3.exceptions.SSLError('获取github commits 失败！')
+
+    if proxies_iter:
+        proxy = next(proxies_iter)
+        proxy_scheme, ip, port, user, password = proxy['scheme'], proxy['ip'], proxy['port'], proxy['user'], proxy['password']
+        url_scheme = urlparse(url).scheme
+        if not url_scheme:
+            logger.error(f'Failed to get scheme from url {url}')
+        # This elif branch is commented because http(s) proxy and request scheme don't have to be the same
+        # elif url_scheme != proxy_scheme:
+        #     logger.warning(f'URL scheme {url_scheme} does not match proxy scheme{proxy_scheme}, skipping')
+        else:
+            req_session.proxies[url_scheme] = f'{proxy_scheme}://{user}:{password}@{ip}:{port}'
 
     res = req_session.get(url, headers=headers, params=params)
     if res.status_code >= 300:
@@ -41,6 +54,15 @@ def do_get_result(req_session, url, headers, params):
         logger.warning(f"text:{res.text}")
         raise HttpGetException('http get 失败！')
     return res
+
+
+# # retry 防止SSL解密错误，请正确处理是否忽略证书有效性
+# @retry(stop=stop_after_attempt(3),
+#        wait=wait_fixed(1),
+#        retry=retry_if_exception_type(urllib3.exceptions.HTTPError))
+def do_get_github_result(req_session, url, headers, params, github_tokens_iter, proxies_iter):
+    req_session.headers.update({'Authorization': 'token %s' % next(github_tokens_iter)})
+    return do_get_result(req_session, url, headers, params, proxies_iter)
 
 
 def get_opensearch_client(opensearch_conn_infos):
