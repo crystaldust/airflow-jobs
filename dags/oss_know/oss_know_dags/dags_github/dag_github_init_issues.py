@@ -2,9 +2,9 @@ from datetime import datetime
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from oss_know.libs.base_dict.variable_key import NEED_INIT_GITHUB_ISSUES_REPOS, OPENSEARCH_CONN_DATA, GITHUB_TOKENS
+from oss_know.libs.util.proxy import GithubTokenProxyAccommodator
 
 # v0.0.1
-
 with DAG(
         dag_id='github_init_issues_v1',
         schedule_interval=None,
@@ -30,14 +30,14 @@ with DAG(
         proxies = Variable.get("proxies", deserialize_json=True)
         opensearch_conn_infos = Variable.get(OPENSEARCH_CONN_DATA, deserialize_json=True)
 
+        proxy_accommodator = GithubTokenProxyAccommodator(github_tokens, proxies,
+                                                          policy=GithubTokenProxyAccommodator.POLICY_FIXED_MAP,
+                                                          shuffle=True)
         owner = params["owner"]
         repo = params["repo"]
         since = None
 
-        do_init_sync_info = init_issues.init_github_issues(
-            github_tokens, opensearch_conn_infos, owner, repo, since, proxies)
-
-        return params
+        init_issues.init_github_issues(opensearch_conn_infos, owner, repo, proxy_accommodator, since)
 
 
     need_do_init_sync_ops = []

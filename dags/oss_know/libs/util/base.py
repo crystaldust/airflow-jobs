@@ -23,12 +23,13 @@ class HttpGetException(Exception):
 
 
 # retry 防止SSL解密错误，请正确处理是否忽略证书有效性
-@retry(stop=stop_after_attempt(5),
+@retry(stop=stop_after_attempt(10),
        wait=wait_fixed(1),
        retry=(retry_if_exception_type(urllib3.exceptions.HTTPError) |
               retry_if_exception_type(urllib3.exceptions.MaxRetryError) |
-              retry_if_exception_type(requests.exceptions.ProxyError)))
-def do_get_result(req_session, url, headers, params, proxies_iter):
+              retry_if_exception_type(requests.exceptions.ProxyError) |
+              retry_if_exception_type(requests.exceptions.SSLError)))
+def do_get_result(req_session, url, headers, params):
     # 尝试处理网络请求错误
     # session.mount('http://', HTTPAdapter(
     #     max_retries=Retry(total=5, method_whitelist=frozenset(['GET', 'POST']))))  # 设置 post()方法进行重访问
@@ -36,20 +37,7 @@ def do_get_result(req_session, url, headers, params, proxies_iter):
     #     max_retries=Retry(total=5, method_whitelist=frozenset(['GET', 'POST']))))  # 设置 post()方法进行重访问
     # raise urllib3.exceptions.SSLError('获取github commits 失败！')
 
-    if proxies_iter:
-        proxy = next(proxies_iter)
-        proxy_scheme, ip, port, user, password = proxy['scheme'], proxy['ip'], proxy['port'], proxy['user'], proxy['password']
-        url_scheme = urlparse(url).scheme
-        if not url_scheme:
-            logger.error(f'Failed to get scheme from url {url}')
-        # This elif branch is commented because http(s) proxy and request scheme don't have to be the same
-        # elif url_scheme != proxy_scheme:
-        #     logger.warning(f'URL scheme {url_scheme} does not match proxy scheme{proxy_scheme}, skipping')
-        else:
-            req_session.proxies[url_scheme] = f'{proxy_scheme}://{user}:{password}@{ip}:{port}'
-            logger.debug(f'Request url {url} with proxy {req_session.proxies[url_scheme]}')
-
-    res = req_session.get(url, headers=headers, params=params, verify=False)
+    res = req_session.get(url, headers=headers, params=params)
     if res.status_code >= 300:
         logger.warning(f"url:{url}")
         logger.warning(f"headers:{headers}")
@@ -60,14 +48,37 @@ def do_get_result(req_session, url, headers, params, proxies_iter):
 
 
 # # retry 防止SSL解密错误，请正确处理是否忽略证书有效性
-# @retry(stop=stop_after_attempt(3),
-#        wait=wait_fixed(1),
-#        retry=retry_if_exception_type(urllib3.exceptions.HTTPError))
-def do_get_github_result(req_session, url, headers, params, github_tokens_iter, proxies_iter):
-    github_token = next(github_tokens_iter)
+@retry(stop=stop_after_attempt(10),
+       wait=wait_fixed(1),
+       retry=(retry_if_exception_type(urllib3.exceptions.HTTPError) |
+              retry_if_exception_type(urllib3.exceptions.MaxRetryError) |
+              retry_if_exception_type(requests.exceptions.ProxyError) |
+              retry_if_exception_type(requests.exceptions.SSLError)))
+def do_get_github_result(req_session, url, headers, params, token_proxy_accommodator):
+    github_token, proxy = token_proxy_accommodator.next()
     logger.debug(f'GitHub request {url} with token {github_token}')
     req_session.headers.update({'Authorization': 'token %s' % github_token})
-    return do_get_result(req_session, url, headers, params, proxies_iter)
+
+    proxy_scheme, ip, port, user, password = proxy['scheme'], proxy['ip'], proxy['port'], proxy['user'], proxy[
+        'password']
+    url_scheme = urlparse(url).scheme
+    if not url_scheme:
+        logger.error(f'Failed to get scheme from url {url}')
+    # This elif branch is commented because http(s) proxy and request scheme don't have to be the same
+    # elif url_scheme != proxy_scheme:
+    #     logger.warning(f'URL scheme {url_scheme} does not match proxy scheme{proxy_scheme}, skipping')
+    else:
+        req_session.proxies[url_scheme] = f'{proxy_scheme}://{user}:{password}@{ip}:{port}'
+        logger.debug(f'Request url {url} with proxy {req_session.proxies[url_scheme]}')
+
+    res = req_session.get(url, headers=headers, params=params, verify=False)
+    if res.status_code >= 300:
+        logger.warning(f"url:{url}")
+        logger.warning(f"headers:{headers}")
+        logger.warning(f"params:{params}")
+        logger.warning(f"text:{res.text}")
+        raise HttpGetException('http get 失败！', res.status_code)
+    return res
 
 
 def get_opensearch_client(opensearch_conn_infos):

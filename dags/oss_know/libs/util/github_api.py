@@ -27,14 +27,11 @@ class GithubAPI:
 
         return do_get_result(http_session, url, headers, params)
 
-    def get_github_issues(self, http_session, github_tokens_iter, proxies_iter, owner, repo, page, since):
-        url = "https://api.github.com/repos/{owner}/{repo}/issues".format(
-            owner=owner, repo=repo)
+    def get_github_issues(self, http_session, token_proxy_accommodator, owner, repo, page, since):
+        url = f"https://api.github.com/repos/{owner}/{repo}/issues"
         headers = copy.deepcopy(self.github_headers)
-        # headers.update({'Authorization': 'token %s' % next(github_tokens_iter)})
         params = {'state': 'all', 'per_page': 100, 'page': page, 'since': since}
-        res = do_get_github_result(http_session, url, headers, params, github_tokens_iter=github_tokens_iter,
-                                   proxies_iter=proxies_iter)
+        res = do_get_github_result(http_session, url, headers, params, token_proxy_accommodator=token_proxy_accommodator)
 
         logger.info(f"url:{url}, \n headers:{headers}, \n params：{params}")
 
