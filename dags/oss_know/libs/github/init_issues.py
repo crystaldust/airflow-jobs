@@ -12,8 +12,9 @@ from oss_know.libs.util.opensearch_api import OpensearchAPI
 from oss_know.libs.util.log import logger
 
 
-def init_github_issues(github_tokens, opensearch_conn_infos, owner, repo, since=None):
+def init_github_issues(github_tokens, opensearch_conn_infos, owner, repo, since=None, proxies=None):
     github_tokens_iter = itertools.cycle(github_tokens)
+    proxies_iter = itertools.cycle(proxies)
 
     opensearch_client = OpenSearch(
         hosts=[{'host': opensearch_conn_infos["HOST"], 'port': opensearch_conn_infos["PORT"]}],
@@ -34,7 +35,7 @@ def init_github_issues(github_tokens, opensearch_conn_infos, owner, repo, since=
 
         # 获取github issues
         req = github_api.get_github_issues(http_session=session, github_tokens_iter=github_tokens_iter,
-                                           owner=owner, repo=repo, page=page, since=since)
+                                           proxies_iter=proxies_iter, owner=owner, repo=repo, page=page, since=since)
         one_page_github_issues = req.json()
 
         if (one_page_github_issues is not None) and len(one_page_github_issues) == 0:

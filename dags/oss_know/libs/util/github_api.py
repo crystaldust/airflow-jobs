@@ -1,6 +1,6 @@
 import copy
 
-from oss_know.libs.util.base import do_get_result
+from oss_know.libs.util.base import do_get_result, do_get_github_result
 from oss_know.libs.util.log import logger
 
 
@@ -27,13 +27,14 @@ class GithubAPI:
 
         return do_get_result(http_session, url, headers, params)
 
-    def get_github_issues(self, http_session, github_tokens_iter, owner, repo, page, since):
+    def get_github_issues(self, http_session, github_tokens_iter, proxies_iter, owner, repo, page, since):
         url = "https://api.github.com/repos/{owner}/{repo}/issues".format(
             owner=owner, repo=repo)
         headers = copy.deepcopy(self.github_headers)
-        headers.update({'Authorization': 'token %s' % next(github_tokens_iter)})
+        # headers.update({'Authorization': 'token %s' % next(github_tokens_iter)})
         params = {'state': 'all', 'per_page': 100, 'page': page, 'since': since}
-        res = do_get_result(http_session, url, headers, params)
+        res = do_get_github_result(http_session, url, headers, params, github_tokens_iter=github_tokens_iter,
+                                   proxies_iter=proxies_iter)
 
         logger.info(f"url:{url}, \n headers:{headers}, \n params：{params}")
 

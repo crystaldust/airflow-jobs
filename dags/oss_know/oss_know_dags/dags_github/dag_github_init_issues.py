@@ -27,6 +27,7 @@ with DAG(
         from oss_know.libs.github import init_issues
 
         github_tokens = Variable.get(GITHUB_TOKENS, deserialize_json=True)
+        proxies = Variable.get("proxies", deserialize_json=True)
         opensearch_conn_infos = Variable.get(OPENSEARCH_CONN_DATA, deserialize_json=True)
 
         owner = params["owner"]
@@ -34,7 +35,7 @@ with DAG(
         since = None
 
         do_init_sync_info = init_issues.init_github_issues(
-            github_tokens, opensearch_conn_infos, owner, repo, since)
+            github_tokens, opensearch_conn_infos, owner, repo, since, proxies)
 
         return params
 
