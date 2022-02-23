@@ -26,15 +26,20 @@ with DAG(
         from airflow.models import Variable
         from oss_know.libs.github import init_pull_requests
 
-        github_tokens = Variable.get(GITHUB_TOKENS, deserialize_json=True)
         opensearch_conn_info = Variable.get(OPENSEARCH_CONN_DATA, deserialize_json=True)
+        github_tokens = Variable.get(GITHUB_TOKENS, deserialize_json=True)
+        proxies = Variable.get("proxies", deserialize_json=True)
+
+        proxy_accommodator = GithubTokenProxyAccommodator(github_tokens, proxies,
+                                                          policy=GithubTokenProxyAccommodator.POLICY_FIXED_MAP,
+                                                          shuffle=True)
 
         owner = params["owner"]
         repo = params["repo"]
         since = None
 
         do_init_sync_info = init_pull_requests.init_sync_github_pull_requests(
-            github_tokens, opensearch_conn_info, owner, repo, since)
+            github_tokens, opensearch_conn_info, owner, repo, proxy_accommodator, since)
 
         return params
 

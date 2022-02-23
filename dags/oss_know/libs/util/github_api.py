@@ -84,11 +84,10 @@ class GithubAPI:
         res = do_get_result(http_session, url, headers, params)
         return res
 
-    def get_github_pull_requests(self, http_session, github_tokens_iter, owner, repo, page, since):
+    def get_github_pull_requests(self, http_session, token_proxy_accommodator, owner, repo, page, since):
         url = "https://api.github.com/repos/{owner}/{repo}/pulls".format(
             owner=owner, repo=repo)
         headers = copy.deepcopy(self.github_headers)
-        headers.update({'Authorization': 'token %s' % next(github_tokens_iter)})
         params = {'state': 'all', 'per_page': 100, 'page': page, 'since': since}
-        res = do_get_result(http_session, url, headers, params)
+        res = do_get_github_result(http_session, url, headers, params, token_proxy_accommodator)
         return res
