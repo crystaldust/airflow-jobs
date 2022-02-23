@@ -1,5 +1,5 @@
 import http
-from datetime import datetime
+from dateutil.parser import parse
 import requests
 import shutil
 import gzip
@@ -25,6 +25,20 @@ from oss_know.libs.util.opensearch_api import OpensearchAPI
 from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_MAILLISTS
 
 
+def _convert_date_str(date_str):
+    """Get the formatted date string(%Y-%m-%dT%H:%M:%SZ) and time zone number(like: +8)
+        Parameters:
+            date_str (str): A date string, expected to be parsed by dateutil lib
+
+        Returns:
+            formatted_date_str (str): Date string formatted in "%Y-%m-%dT%H:%M:%SZ"
+            tz_num (int): The time zone number, an integer like +8, -3, 0
+    """
+    datetime_obj = parse(date_str)
+    formatted_date_str = datetime_obj.strftime('%Y-%m-%dT%H:%M:%SZ')
+    tz_num = int(datetime_obj.utcoffset().total_seconds() / 3600)
+    return formatted_date_str, tz_num
+
 class OSSKnowMBoxEnrich(MBoxEnrich):
     ESSENTIAL_KEYS = ['Reference', 'In-Reply-To']
 
@@ -41,6 +55,14 @@ class OSSKnowMBoxEnrich(MBoxEnrich):
             'mail_list_name': self.mail_list_name,
             'updated_at': get_updated_at()
         }
+        # TODO Might be KeyError or TypeError(refering None)?
+        eitem['Date_tz'] = item['data']['Date_tz']
+
+        for key in ['email_date', 'metadata__enriched_on']:
+            formatted_date_str, tz_num = _convert_date_str(eitem[key])
+            eitem[key] = formatted_date_str
+            eitem[f'{key}_tz'] = tz_num
+
 
         for essential_key in OSSKnowMBoxEnrich.ESSENTIAL_KEYS:
             if essential_key in item:
@@ -152,7 +174,7 @@ def sync_archive(opensearch_conn_info, **maillist_params):
     project_name = maillist_params['project_name']
     list_name = maillist_params['list_name']
 
-    clear_existing_indices = True
+    clear_existing_indices = False
     if 'clear_exist' in maillist_params:
         clear_existing_indices = bool(maillist_params['clear_exist'])
 
@@ -184,7 +206,6 @@ def sync_archive(opensearch_conn_info, **maillist_params):
         ocean_backend = PipermailOcean(None)
         enrich_backend = OSSKnowPipermailEnrich(project_name, list_name)
     elif archive_type == 'mbox':
-        path.join(project_name, list_name)
         project_name = maillist_params['project_name']
         list_name = maillist_params['list_name']
         url_prefix = maillist_params['url_prefix']
@@ -234,7 +255,7 @@ def sync_archive(opensearch_conn_info, **maillist_params):
     #     print(type(e))
     #     logger.warning(f'Got exception: {e}')
 
-
+from dateutil.parser import parse
 
 # The 2 helpers are yanked from:
 # https://github.com/chaoss/grimoirelab-elk/blob/6fa82bd1550257f74c13bb11bcae58f895291ca9/tests/base.py#L54
@@ -242,11 +263,14 @@ def _ocean_item(item, ocean):
     # TODO By <juzhen@huawei.com>: We may not need the expansions here
     # Hack until we decide when to drop this field
     if 'updated_on' in item:
-        updated = datetime.fromtimestamp(item['updated_on'])
-        item['metadata__updated_on'] = updated.isoformat()
+        # TODO Better to provide a helper for date time formatting
+        item['metadata__updated_on'] = datetime.utcfromtimestamp(int(item['updated_on'])).strftime('%Y-%m-%dT%H:%M:%SZ')
     if 'timestamp' in item:
-        ts = datetime.fromtimestamp(item['timestamp'])
-        item['metadata__timestamp'] = ts.isoformat()
+        item['metadata__timestamp'] = datetime.utcfromtimestamp(int(item['timestamp'])).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    formatted_date_str, tz_num = _convert_date_str(item['data']['Date'])
+    item['data']['Date'] = formatted_date_str
+    item['data']['Date_tz'] = tz_num
 
     # the _fix_item does not apply to the test data for Twitter
     try:
