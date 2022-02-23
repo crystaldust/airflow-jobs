@@ -45,6 +45,7 @@ def do_get_result(req_session, url, headers, params, proxies_iter):
         #     logger.warning(f'URL scheme {url_scheme} does not match proxy scheme{proxy_scheme}, skipping')
         else:
             req_session.proxies[url_scheme] = f'{proxy_scheme}://{user}:{password}@{ip}:{port}'
+            logger.debug(f'Request url {url} with proxy {req_session.proxies[url_scheme]}')
 
     res = req_session.get(url, headers=headers, params=params)
     if res.status_code >= 300:
@@ -52,7 +53,7 @@ def do_get_result(req_session, url, headers, params, proxies_iter):
         logger.warning(f"headers:{headers}")
         logger.warning(f"params:{params}")
         logger.warning(f"text:{res.text}")
-        raise HttpGetException('http get 失败！')
+        raise HttpGetException('http get 失败！', res.status_code)
     return res
 
 
@@ -61,7 +62,9 @@ def do_get_result(req_session, url, headers, params, proxies_iter):
 #        wait=wait_fixed(1),
 #        retry=retry_if_exception_type(urllib3.exceptions.HTTPError))
 def do_get_github_result(req_session, url, headers, params, github_tokens_iter, proxies_iter):
-    req_session.headers.update({'Authorization': 'token %s' % next(github_tokens_iter)})
+    github_token = next(github_tokens_iter)
+    logger.debug(f'GitHub request {url} with token {github_token}')
+    req_session.headers.update({'Authorization': 'token %s' % github_token})
     return do_get_result(req_session, url, headers, params, proxies_iter)
 
 
