@@ -275,5 +275,8 @@ def _convert_date_str(date_str):
     """
     datetime_obj = parse(date_str, fuzzy=True)
     formatted_date_str = datetime_obj.strftime('%Y-%m-%dT%H:%M:%SZ')
-    tz_num = int(datetime_obj.utcoffset().total_seconds() / 3600)
+    tz_num = 0
+    utc_offset = datetime_obj.utcoffset()
+    if utc_offset:
+        tz_num = int(utc_offset.total_seconds() / 3600)
     return formatted_date_str, tz_num
