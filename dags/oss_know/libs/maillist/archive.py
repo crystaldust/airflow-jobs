@@ -26,7 +26,7 @@ from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_MAILLISTS
 
 
 class OSSKnowMBoxEnrich(MBoxEnrich):
-    ESSENTIAL_KEYS = ['Reference', 'In-Reply-To']
+    ESSENTIAL_KEYS = ['Reference', 'In-Reply-To', 'From', 'To']
 
     def __init__(self, project_name, list_name, **kwargs):
         super().__init__(**kwargs)
@@ -50,8 +50,8 @@ class OSSKnowMBoxEnrich(MBoxEnrich):
             eitem[f'{key}_tz'] = tz_num
 
         for essential_key in OSSKnowMBoxEnrich.ESSENTIAL_KEYS:
-            if essential_key in item:
-                eitem[essential_key] = item[essential_key]
+            if essential_key in item['data']:
+                eitem[essential_key] = item['data'][essential_key]
         return eitem
 
     def get_connector_name(self):
@@ -190,6 +190,17 @@ def sync_archive(opensearch_conn_info, **maillist_params):
         repo = Pipermail(url=archive.url_prefix, dirpath=archive.dirpath)
         ocean_backend = PipermailOcean(None)
         enrich_backend = OSSKnowPipermailEnrich(project_name, list_name)
+    elif archive_type == 'mbox':
+        project_name = maillist_params['project_name']
+        list_name = maillist_params['list_name']
+        url_prefix = maillist_params['url_prefix']
+        if 'mbox_path' in maillist_params and maillist_params['mbox_path']:
+            dirpath = maillist_params['mbox_path']
+        else:
+            dirpath = path.join(project_name, list_name)
+        repo = MBox(uri=url_prefix, dirpath=dirpath)
+        ocean_backend = MBoxOcean(None)
+        enrich_backend = OSSKnowMBoxEnrich(project_name, list_name)
 
     os_user = opensearch_conn_info["USER"]
     os_pass = opensearch_conn_info["PASSWD"]
