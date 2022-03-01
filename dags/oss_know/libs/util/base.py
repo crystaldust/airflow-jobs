@@ -50,6 +50,14 @@ def do_get_result(req_session, url, headers, params):
     return res
 
 
+class FakeResponse:
+    def __init__(self):
+        pass
+
+    def json(self):
+        return []
+
+
 # # retry 防止SSL解密错误，请正确处理是否忽略证书有效性
 @retry(stop=stop_after_attempt(10),
        wait=wait_fixed(1),
@@ -81,6 +89,9 @@ def do_get_github_result(req_session, url, headers, params, accommodator: Github
         logger.warning(f"headers:{headers}")
         logger.warning(f"params:{params}")
         logger.warning(f"text:{res.text}")
+
+        if 500 <= res.status_code <= 599:
+            return FakeResponse()
 
         if res.status_code == 401:
             # Token no longer invalid
