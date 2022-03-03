@@ -1,10 +1,14 @@
-from airflow.utils.db import provide_session
-from airflow.models import XCom
 from datetime import datetime
+
 from airflow import DAG
-from airflow.operators.python import PythonOperator
 from airflow.models import Variable
+from airflow.models import XCom
+from airflow.operators.python import PythonOperator
+from airflow.utils.db import provide_session
+
 from oss_know.libs.base_dict.variable_key import NEED_INIT_GITHUB_PROFILES_REPOS
+from oss_know.libs.util.proxy import KuaiProxyService, ProxyManager, GithubTokenProxyAccommodator
+from oss_know.libs.util.token import TokenManager
 
 
 @provide_session
@@ -35,7 +39,6 @@ with DAG(
     def load_github_repo_id(params, **kwargs):
         from airflow.models import Variable
         from oss_know.libs.github import init_profiles
-        from oss_know.libs.github import sync_profiles
         opensearch_conn_infos = Variable.get("opensearch_conn_data", deserialize_json=True)
         owner = params["owner"]
         repo = params["repo"]
@@ -47,13 +50,28 @@ with DAG(
         from airflow.models import Variable
         github_tokens = Variable.get("github_tokens", deserialize_json=True)
         opensearch_conn_infos = Variable.get("opensearch_conn_data", deserialize_json=True)
+
+        proxy_confs = Variable.get('proxy_confs', deserialize_json=True)
+        proxies = []
+        for line in proxy_confs['reserved_proxies']:
+            proxies.append(f'http://{line}')
+
+        proxy_service = KuaiProxyService(proxy_confs['api_url'], proxy_confs['orderid'])
+        proxy_manager = ProxyManager(proxies, proxy_service)
+        token_manager = TokenManager(github_tokens)
+
+        proxy_accommodator = GithubTokenProxyAccommodator(token_manager, proxy_manager, shuffle=True,
+                                                          policy=GithubTokenProxyAccommodator.POLICY_FIXED_MAP)
+
         github_users_ids = []
         for param in params:
             owner = param["owner"]
             repo = param["repo"]
             github_users_ids += kwargs['ti'].xcom_pull(key=f'{owner}_{repo}_ids')
         from oss_know.libs.github import init_profiles
-        init_profiles.load_github_profiles(github_tokens=github_tokens, opensearch_conn_infos=opensearch_conn_infos,
+
+        init_profiles.load_github_profiles(token_proxy_accommodator=proxy_accommodator,
+                                           opensearch_conn_infos=opensearch_conn_infos,
                                            github_users_ids=github_users_ids)
         return 'End load_github_repo_profile'
 
