@@ -630,28 +630,6 @@
                     <user>default</user>
                     <password>default</password>
                 </replica>
-                <replica>
-                    <host>ch-cluster-0-1</host>
-                    <port>9000</port>
-                    <user>default</user>
-                    <password>default</password>
-                </replica>
-            </shard>
-            <shard>
-                <weight>1</weight>
-                <internal_replication>true</internal_replication>
-                <replica>
-                    <host>ch-cluster-1-0</host>
-                    <port>9000</port>
-                    <user>default</user>
-                    <password>default</password>
-                </replica>
-                <replica>
-                    <host>ch-cluster-1-1</host>
-                    <port>9000</port>
-                    <user>default</user>
-                    <password>default</password>
-                </replica>
             </shard>
         </replicated>
 <!--        <test_shard_localhost>-->
@@ -873,15 +851,7 @@
     -->
     <zookeeper>
         <node index="1">
-            <host>zk1</host>
-            <port>2181</port>
-        </node>
-        <node  index="2">
-            <host>zk2</host>
-            <port>2181</port>
-        </node>
-        <node index="3">
-            <host>zk3</host>
+            <host>zk1.docker</host>
             <port>2181</port>
         </node>
 <!--        <session_timeout_ms>30000</session_timeout_ms>-->
