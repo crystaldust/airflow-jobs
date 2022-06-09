@@ -899,7 +899,11 @@ def statistics_metrics(clickhouse_server_info):
     	toString(a.github_id)= b.github_id
     	and a.owner = b.owner
     	and a.repo = b.repo""")
-    all_data = []
+
+    batch_data = []
+    batch_size = 5000
+    insert_metrics_sql = "INSERT INTO metrics VALUES"
+
     for result in results:
         data = {}
         data['owner'] = result[0]
@@ -926,9 +930,13 @@ def statistics_metrics(clickhouse_server_info):
         data['changed_label_times_in_prs'] = result[21]
         data['closed_issues_times'] = result[22]
         data['closed_prs_times'] = result[23]
-        all_data.append(data)
-    ck_sql = "INSERT INTO metrics VALUES"
-    ck.execute(ck_sql, all_data)
+        batch_data.append(data)
+
+        if len(batch_data) >= batch_size:
+            ck.execute("INSERT INTO metrics VALUES", batch_data)
+            batch_data = []
+    if batch_data:
+        ck.execute(insert_metrics_sql, batch_data)
     return "end::statistics_metrics"
 
 
