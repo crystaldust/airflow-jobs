@@ -949,6 +949,12 @@ sum(changed_label_times_in_prs) / count(github_login), sum(closed_issues_times) 
 group by (owner, repo, github_id, github_login)
 '''
 
+distinct_owner_repos_sql = f"""
+SELECT distinct(owner, repo) FROM activities 
+WHERE owner!=''
+AND repo!=''
+"""
+
 activity_factors = '''
 0.00 1.03 0.02 -0.07 -0.04 0.05
 0.00 1.03 0.02 -0.07 -0.04 0.05
@@ -1030,3 +1036,77 @@ def statistics_activities(clickhouse_server_info):
         num_inserted += len(batch)
 
     logger.info(f'{num_inserted} activity records inserted')
+
+
+# TODO Collect and put the robots' info in a centralized storage
+# Skip the robots
+robot_github_logins = ['k8s-github-robot']
+
+
+def _get_mins_maxs(rows):
+    maxs = [None] * 6
+    mins = [None] * 6
+    for row in rows:
+        scores = row[4:]
+        for index, score in enumerate(scores):
+            if maxs[index] is None:
+                maxs[index] = score
+            else:
+                maxs[index] = max(score, maxs[index])
+
+            if mins[index] is None:
+                mins[index] = score
+            else:
+                mins[index] = min(score, mins[index])
+
+    return mins, maxs
+
+
+def _get_mapped_rows(rows, maxs, mins):
+    mapped_rows = []
+    for row in rows:
+        scores = row[4:]
+        mapped_scores = []
+        for index, score in enumerate(scores):
+            max_val = maxs[index]
+            min_val = mins[index]
+
+            # when max == min,
+            mapped_score = 1 if max_val == min_val else (score - min_val) / (max_val - min_val)
+            mapped_score = round(mapped_score * 100, 2)
+
+            mapped_scores.append(mapped_score)
+        mapped_rows.append(list(row[:4]) + mapped_scores)
+    return mapped_rows
+
+
+def _batch_insert(ck_client: CKServer, rows, batch_size=5000):
+    index = 0
+    while index < len(rows):
+        batch = rows[index: index + batch_size]
+        ck_client.execute(f'INSERT INTO TABLE activities_mapped VALUES', batch)
+        index += len(batch)
+    return index
+
+
+def activities_mapped(clickhouse_server_info):
+    ck_client = CKServer(host=clickhouse_server_info["HOST"],
+                         port=clickhouse_server_info["PORT"],
+                         user=clickhouse_server_info["USER"],
+                         password=clickhouse_server_info["PASSWD"],
+                         database=clickhouse_server_info["DATABASE"])
+    owner_repos_result = ck_client.execute_no_params(distinct_owner_repos_sql)
+    for owner_repo in owner_repos_result:
+        owner, repo = owner_repo[0]  # owner_repo is a list of binary tuple
+        # TODO Apply pagination & min/max query to the process, it's necessary for super large data
+        fetch_rows_sql = f"""
+            SELECT * FROM activities
+            WHERE owner='{owner}'
+            AND repo='{repo}'
+            AND github_login not in {robot_github_logins}
+            """
+        rows = ck_client.execute_no_params(fetch_rows_sql)
+        mins, maxs = _get_mins_maxs(rows)
+        mapped_rows = _get_mapped_rows(rows, maxs, mins)
+        num_inserted = _batch_insert(ck_client, mapped_rows)
+        logger.debug(f'{owner}/{repo} {num_inserted} records mapped')
