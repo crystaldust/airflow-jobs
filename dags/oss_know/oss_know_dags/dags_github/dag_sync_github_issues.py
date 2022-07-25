@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -58,10 +59,10 @@ with DAG(
         owner = params["owner"]
         repo = params["repo"]
 
-        issues_numbers = sync_issues.sync_github_issues(opensearch_conn_info=opensearch_conn_infos,
-                                                        owner=owner,
-                                                        repo=repo,
-                                                        token_proxy_accommodator=proxy_accommodator)
+        issues_numbers, pr_numbers = sync_issues.sync_github_issues(opensearch_conn_info=opensearch_conn_infos,
+                                                                    owner=owner,
+                                                                    repo=repo,
+                                                                    token_proxy_accommodator=proxy_accommodator)
 
         return issues_numbers
 
@@ -107,7 +108,6 @@ with DAG(
             repo=repo,
             token_proxy_accommodator=proxy_accommodator,
             issues_numbers=issues_numbers)
-
 
     from airflow.models import Variable
 
