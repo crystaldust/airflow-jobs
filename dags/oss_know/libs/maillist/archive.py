@@ -1,5 +1,6 @@
 import gzip
 import http
+import re
 import shutil
 from datetime import datetime
 from os import makedirs, remove, path
@@ -15,7 +16,7 @@ from grimoire_elk.utils import get_elastic
 from perceval.backends.core.mbox import MBox
 from perceval.backends.core.pipermail import Pipermail
 
-from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_MAILLISTS
+from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_LKML_MAILLISTS
 from oss_know.libs.util.base import now_timestamp
 from oss_know.libs.util.log import logger
 
@@ -38,6 +39,7 @@ class OSSKnowMBoxEnrich(MBoxEnrich):
         }
         # TODO Might be KeyError or TypeError(refering None)?
         eitem['Date_tz'] = item['data']['Date_tz']
+        eitem['Thread-ID'] = item['data']['Thread-ID']
 
         for key in ['email_date', 'metadata__enriched_on', 'grimoire_creation_date']:
             formatted_date_str, tz_num = _convert_date_str(eitem[key])
@@ -207,14 +209,14 @@ def sync_archive(opensearch_conn_info, **maillist_params):
     # grimoire_elk will create mapping automatically, which is not necessary
     # And mapping creation will fail
     ocean_backend.mapping = None
-    elastic_ocean = get_elastic(os_url, OPENSEARCH_INDEX_MAILLISTS, clear_existing_indices, ocean_backend)
+    elastic_ocean = get_elastic(os_url, OPENSEARCH_INDEX_LKML_MAILLISTS, clear_existing_indices, ocean_backend)
     ocean_backend.set_elastic(elastic_ocean)
 
     num_raw = _data2es(repo.fetch(), ocean_backend, project_name, list_name)
     logger.info(f'{num_raw} records for mail list {project_name}/{list_name}')
 
     enrich_backend.mapping = None
-    elastic_enrich = get_elastic(os_url, f'{OPENSEARCH_INDEX_MAILLISTS}_enriched', clear_existing_indices,
+    elastic_enrich = get_elastic(os_url, f'{OPENSEARCH_INDEX_LKML_MAILLISTS}_enriched', clear_existing_indices,
                                  enrich_backend)
     enrich_backend.set_elastic(elastic_enrich)
 
@@ -253,6 +255,8 @@ def _ocean_item(item, ocean):
 def _data2es(items, ocean, project_name, mail_list_name):
     items_pack = []  # to feed item in packs
     inserted = 0
+    thread_head = ""
+    first_item_handled = False
 
     for item in items:
         item = _ocean_item(item, ocean)
@@ -263,6 +267,30 @@ def _data2es(items, ocean, project_name, mail_list_name):
             'mail_list_name': mail_list_name,
             'updated_at': now_timestamp()
         }
+        if not first_item_handled:
+            # The first item, calculate the thread head
+            first_from = item['data']['From']
+            # Try to get the thread starter's email address
+            thread_starter_email = ""
+            try:
+                result = re.search('.*<(.*)>.*', first_from)
+                thread_starter_email = result.group(1)
+            except (IndexError, AttributeError) as e:
+                logger.warning(f'Failed to get thread starter email, error: {e}')
+                thread_starter_email = first_from.rstrip('>').split(' ')[-1].lstrip('<')
+
+            if not thread_starter_email:
+                logger.warning(f'Failed to get thread starter email, replace it with first from')
+                thread_starter_email = first_from
+
+            item_uuid = item['uuid']
+            thread_head = f'{item_uuid}___{thread_starter_email}'
+
+            first_item_handled = True
+
+        if thread_head:
+            item['data']['Thread-ID'] = thread_head
+
         item['data']['enrich_filter_raw'] = f'{project_name}_{mail_list_name}'
         items_pack.append(item)
         if len(items_pack) >= ocean.elastic.max_items_bulk:

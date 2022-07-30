@@ -49,7 +49,7 @@ with DAG(
                     break
             df = pd.json_normalize(template)
             template = init_ck_transfer_data.parse_data_init(df)
-            if table_name.startswith("maillist"):
+            if table_name.startswith("lkml_maillist"):
                 transfer_data = init_ck_transfer_data.transfer_data_by_repo(
                     clickhouse_server_info=clickhouse_server_info,
                     opensearch_index=opensearch_index,
@@ -73,7 +73,7 @@ with DAG(
     owner_repo_list = Variable.get(REPO_LIST, deserialize_json=True)
     maillist_repo_list = Variable.get(MAILLIST_REPO, deserialize_json=True)
     for os_index_ck_tb_info in os_index_ck_tb_infos:
-        if os_index_ck_tb_info["OPENSEARCH_INDEX"].startswith('maillist'):
+        if os_index_ck_tb_info["OPENSEARCH_INDEX"].startswith('lkml_maillist'):
             for maillist_repo in maillist_repo_list:
                 op_do_ck_transfer_data_by_repo = PythonOperator(
                     task_id=f'do_ck_transfer_os_index_{os_index_ck_tb_info["OPENSEARCH_INDEX"]}_ck_tb_{os_index_ck_tb_info["CK_TABLE_NAME"]}_project_name_{maillist_repo.get("project_name")}_mail_list_name_{maillist_repo.get("mail_list_name")}',
