@@ -6,18 +6,12 @@ from oss_know.libs.util.opensearch_api import OpensearchAPI
 from oss_know.libs.github.sync_gits import sync_git_datas
 from airflow.operators.python import PythonOperator
 from airflow import DAG
+from airflow.models import Variable
 
 # v0.0.1 It is a mailing list DAG
 
 
-opensearch_conn_info = json.loads('''
-{
-    "HOST": "192.168.8.21",
-    "PASSWD": "admin",
-    "PORT": "19201",
-    "USER": "admin"
-}
-''')
+opensearch_conn_info = Variable.get("opensearch_conn_data", deserialize_json=True)
 
 GIT_REPO_URL_MAP = {
     'gnu___emacs': 'https://git.savannah.gnu.org/git/emacs.git'
@@ -60,7 +54,9 @@ with DAG(
     uniq_owner_repos = opensearch_api.get_uniq_owner_repos(opensearch_client, 'gits')
     for owner, repo in uniq_owner_repos:
         # sync_git_datas(f'https://github.com/{owner}/{repo}', owner, repo, None, opensearch_conn_info)
-        git_repo_url = GIT_REPO_URL_MAP[f'{owner}___{repo}']
+        # git_repo_url = GIT_REPO_URL_MAP[f'{owner}___{repo}']
+        git_repo_url = f'https://github.com/{owner}/{repo}'
+
         op_do_init_sync_git_info = PythonOperator(
             task_id=f'do_sync_git_info_{owner}_{repo}',
             python_callable=do_sync_git_info,
