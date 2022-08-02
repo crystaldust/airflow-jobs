@@ -1,6 +1,4 @@
-import json
 from datetime import datetime
-# from oss_know.libs.maillist.archive import sync_archive
 from oss_know.libs.util.base import get_opensearch_client
 from oss_know.libs.util.opensearch_api import OpensearchAPI
 from oss_know.libs.github.sync_gits import sync_git_datas
@@ -8,31 +6,17 @@ from airflow.operators.python import PythonOperator
 from airflow import DAG
 from airflow.models import Variable
 
-# v0.0.1 It is a mailing list DAG
-
-
 opensearch_conn_info = Variable.get("opensearch_conn_data", deserialize_json=True)
 
-GIT_REPO_URL_MAP = {
-    'gnu___emacs': 'https://git.savannah.gnu.org/git/emacs.git'
-}
-
-with DAG(
-        dag_id='daily_gits_sync',
-        # schedule_interval='*/5 * * * *',
-        schedule_interval=None,
-        start_date=datetime(2021, 1, 1),
-        catchup=False,
-        tags=['github'],
-) as dag:
+with DAG(dag_id='daily_gits_sync',  # schedule_interval='*/5 * * * *',
+         schedule_interval=None, start_date=datetime(2021, 1, 1), catchup=False,
+         tags=['github', 'daily sync'], ) as dag:
     def op_init_daily_gits_sync():
         return 'Start init_daily_gits_sync'
 
 
-    op_init_daily_gits_sync = PythonOperator(
-        task_id='op_init_daily_gits_sync',
-        python_callable=op_init_daily_gits_sync,
-    )
+    op_init_daily_gits_sync = PythonOperator(task_id='op_init_daily_gits_sync',
+                                             python_callable=op_init_daily_gits_sync, )
 
 
     def do_sync_git_info(params):
@@ -52,22 +36,13 @@ with DAG(
     opensearch_api = OpensearchAPI()
 
     uniq_owner_repos = opensearch_api.get_uniq_owner_repos(opensearch_client, 'gits')
-    for owner, repo in uniq_owner_repos:
-        # sync_git_datas(f'https://github.com/{owner}/{repo}', owner, repo, None, opensearch_conn_info)
-        # git_repo_url = GIT_REPO_URL_MAP[f'{owner}___{repo}']
-        git_repo_url = f'https://github.com/{owner}/{repo}'
+    for uniq_item in uniq_owner_repos:
+        owner = uniq_item['owner']
+        repo = uniq_item['repo']
+        origin = uniq_item['origin']
 
-        op_do_init_sync_git_info = PythonOperator(
-            task_id=f'do_sync_git_info_{owner}_{repo}',
-            python_callable=do_sync_git_info,
-            op_kwargs={'params': {
-                "url": git_repo_url,
-                "owner": owner,
-                "repo": repo,
-                "proxy_config": None,
-            }},
-        )
+        op_do_init_sync_git_info = PythonOperator(task_id=f'do_sync_git_info_{owner}_{repo}',
+                                                  python_callable=do_sync_git_info,
+                                                  op_kwargs={'params': {"url": origin, "owner": owner, "repo": repo,
+                                                                        "proxy_config": None, }}, )
         op_init_daily_gits_sync >> op_do_init_sync_git_info
-
-# Sync (owner, repo) one by one
-# Start AirFlow DAG with customized configs(with owner, repo injected)

@@ -466,26 +466,36 @@ class OpensearchAPI:
         return success, failed
 
     def get_uniq_owner_repos(self, opensearch_client, index):
-        result = opensearch_client.search(index=index,
-                                          body={
-                                              "aggs": {
-                                                  "uniq_owners": {
-                                                      "terms": {
-                                                          "field": "search_key.owner.keyword",
-                                                          "size": 1000
-                                                      },
-                                                      "aggs": {
-                                                          "uniq_repos": {
-                                                              "terms": {
-                                                                  "field": "search_key.repo.keyword",
-                                                                  "size": 500
-                                                              }
-                                                          }
-                                                      }
-                                                  }
-                                              }
-                                          }
-                                          )
+        aggregation_body = {
+            "aggs": {
+                "uniq_owners": {
+                    "terms": {
+                        "field": "search_key.owner.keyword",
+                        "size": 1000
+                    },
+                    "aggs": {
+                        "uniq_repos": {
+                            "terms": {
+                                "field": "search_key.repo.keyword",
+                                "size": 500
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if index == 'gits':
+            aggregation_body['aggs']['uniq_owners']['aggs']['uniq_repos']['aggs'] = {
+                "uniq_origin": {
+                    "terms": {
+                        "field": "search_key.origin.keyword",
+                        "size": 10
+                    }
+                }
+            }
+        result = opensearch_client.search(index=index, body=aggregation_body)
+
         uniq_owner_repos = []  # A list of tuple of (owner, repo)
         uniq_owners = result['aggregations']['uniq_owners']['buckets']
         for uniq_owner in uniq_owners:
@@ -493,6 +503,12 @@ class OpensearchAPI:
             uniq_repos = uniq_owner['uniq_repos']['buckets']
             for uniq_repo in uniq_repos:
                 repo_name = uniq_repo['key']
-                uniq_owner_repos.append((owner_name, repo_name))
+                uniq_item = {
+                    'owner': owner_name,
+                    'repo': repo_name
+                }
+                if index == 'gits':
+                    uniq_item['origin'] = uniq_repo['uniq_origin']['buckets'][0]['key']
+                uniq_owner_repos.append(uniq_item)
 
         return uniq_owner_repos
