@@ -49,7 +49,7 @@ with DAG(
                     break
             df = pd.json_normalize(template)
             template = init_ck_transfer_data.parse_data_init(df)
-            if table_name.startswith("maillist"):
+            if table_name.startswith("lkml_maillist"):
                 transfer_data = init_ck_transfer_data.transfer_data_by_repo(
                     clickhouse_server_info=clickhouse_server_info,
                     opensearch_index=opensearch_index,
