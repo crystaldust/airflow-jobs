@@ -93,16 +93,16 @@ def get_profiles_from_os(opensearch_client, owner, repo, index):
                               }}
                           ]}
                       }
-                  }, doc_type='_doc', timeout='10m')
+                  }, timeout='10m')
     logger.info(f'Get GitHub users by {repo} and {owner} and {index} from opensearch.')
     return res
 
 
-def load_github_profiles(token_proxy_accommodator, opensearch_conn_infos, github_users_ids):
+def load_github_profiles(token_proxy_accommodator, opensearch_conn_infos, github_users_ids, if_sync, if_new_person):
     """Get GitHub profiles by ids."""
     # get ids set;
     # github_users_ids = list(set(github_users_ids))
     # put GitHub user profile into opensearch if it is not in opensearch
     opensearch_api = OpensearchAPI()
     opensearch_api.put_profile_into_opensearch(github_ids=github_users_ids, token_proxy_accommodator=token_proxy_accommodator,
-                                               opensearch_client=get_opensearch_client(opensearch_conn_infos))
+                                               opensearch_client=get_opensearch_client(opensearch_conn_infos), if_sync=if_sync, if_new_person=if_new_person)

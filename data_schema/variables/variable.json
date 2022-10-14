@@ -77,6 +77,12 @@
       "repo": "airflow-jobs"
     }
   ],
+  "need_sync_github_profiles_repos": [
+    {
+      "owner": "oss-know",
+      "repo": "airflow-jobs"
+    }
+  ],
   "need_sync_github_profile_repo_list": [
     {
       "owner": "oss-know",
@@ -98,13 +104,13 @@
   },
   "LocationGeo_token": "123456",
   "opensearch_conn_data": {
-    "HOST": "192.168.8.108",
+    "HOST": "192.168.8.120",
     "PASSWD": "admin",
     "PORT": "9200",
     "USER": "admin"
   },
   "clickhouse_conn_data": {
-    "HOST": "192.168.8.108",
+    "HOST": "192.168.8.120",
     "PASSWD": "default",
     "PORT": "19001",
     "USER": "default",
@@ -112,11 +118,50 @@
     "CLUSTER_NAME": "replicated"
   },
   "redis_client_data": {
-    "HOST": "192.168.8.108",
+    "HOST": "192.168.8.120",
     "PORT": "6379"
   },
+  "obs_ak_sk": {"ak": "","sk": ""},
   "redis_conn_data": "redis_client_data",
   "ck_table_map_from_os_index": [
+    {
+      "OPENSEARCH_INDEX": "gits",
+      "CK_TABLE_NAME": "gits"
+    },
+    {
+      "OPENSEARCH_INDEX": "github_profile",
+      "CK_TABLE_NAME": "github_profile"
+    },
+    {
+      "OPENSEARCH_INDEX": "github_commits",
+      "CK_TABLE_NAME": "github_commits"
+    },
+    {
+      "OPENSEARCH_INDEX": "github_issues_comments",
+      "CK_TABLE_NAME": "github_issues_comments"
+    },
+    {
+      "OPENSEARCH_INDEX": "github_issues",
+      "CK_TABLE_NAME": "github_issues"
+    },
+    {
+      "OPENSEARCH_INDEX": "github_pull_requests",
+      "CK_TABLE_NAME": "github_pull_requests"
+    },
+    {
+      "OPENSEARCH_INDEX": "maillists",
+      "CK_TABLE_NAME": "maillists"
+    },
+    {
+      "OPENSEARCH_INDEX": "maillists_enriched",
+      "CK_TABLE_NAME": "maillists_enriched"
+    },
+    {
+      "OPENSEARCH_INDEX": "github_issues_timeline",
+      "CK_TABLE_NAME": "github_issues_timeline"
+    }
+  ],
+  "ck_table_sync_map_from_os_index": [
     {
       "OPENSEARCH_INDEX": "gits",
       "CK_TABLE_NAME": "gits"
@@ -1341,6 +1386,7 @@
           "origin": "",
           "updated_at": 0
         },
+        "ck_data_insert_at": 0,
         "raw_data": {
           "message": "",
           "hexsha": "",
@@ -1397,6 +1443,7 @@
         "search_key": {
           "updated_at": 0
         },
+        "ck_data_insert_at": 0,
         "raw_data": {
           "login": "",
           "id": 0,
@@ -1471,6 +1518,7 @@
           "repo": "",
           "updated_at": 0
         },
+        "ck_data_insert_at": 0,
         "raw_data": {
           "sha": "",
           "node_id": "",
@@ -1571,6 +1619,7 @@
           "number": 0,
           "updated_at": 0
         },
+        "ck_data_insert_at": 0,
         "raw_data": {
           "url": "",
           "html_url": "",
@@ -1634,6 +1683,7 @@
           "repo": "",
           "updated_at": 0
         },
+        "ck_data_insert_at": 0,
         "raw_data": {
           "url": "",
           "repository_url": "",
@@ -1806,6 +1856,7 @@
           "repo": "",
           "updated_at": 0
         },
+        "ck_data_insert_at": 0,
         "raw_data": {
           "url": "",
           "id": 0,
@@ -2294,9 +2345,13 @@
         "search_key": {
           "owner": "",
           "repo": "",
+          "event": "",
           "number": 0,
-          "updated_at": 0
+          "updated_at": 0,
+          "if_sync": 0
         },
+        "deleted": 0,
+        "ck_data_insert_at": 0,
         "raw_data": {
           "timeline_raw": ""
         }
@@ -2315,6 +2370,7 @@
         "search_key__mail_list_name"
       ],
       "parse_data": {
+        "ck_data_insert_at": 0,
         "backend_name": "",
         "backend_version": "",
         "perceval_version": "",
@@ -2547,6 +2603,7 @@
         "search_key__mail_list_name"
       ],
       "parse_data": {
+        "ck_data_insert_at": 0,
         "metadata__updated_on": "1970-01-01T00:00:00Z",
         "metadata__timestamp": "1970-01-01T00:00:00Z",
         "offset": 0,
@@ -2805,7 +2862,78 @@
           "type": ""
         }
       }
+    },
+    {
+  "table_name": "metrics_day_timeline",
+  "cluster_name": "replicated",
+  "database_name": "default",
+  "distributed_key": "ck_data_insert_at",
+  "table_engine": "ReplicatedMergeTree('/clickhouse/tables/{shard}/metrics_day_timeline','{replica}')",
+  "partition_by": "owner",
+  "order_by": [
+    "owner",
+    "repo",
+    "github_id"
+  ],
+  "parse_data": {
+    "ck_data_insert_at": 0,
+    "owner": "",
+    "repo": "",
+    "created_at": "1970-01-01T00:00:00Z",
+    "github_id": 0,
+    "commit_times": 0,
+    "changed_lines": 0,
+    "diff_file_counts": 0,
+    "prs_counts": 0,
+    "pr_body_length_avg": 0.0,
+    "pr_body_length_sum": 0,
+    "issues_counts": 0,
+    "issue_body_length_avg": 0.0,
+    "issue_body_length_sum": 0,
+    "issues_comment_count": 0,
+    "issues_comment_body_length_avg": 0.0,
+    "issues_comment_body_length_sum": 0,
+    "pr_comment_count": 0,
+    "pr_comment_body_length_avg": 0.0,
+    "pr_comment_body_length_sum": 0,
+    "be_mentioned_times_in_issues": 0,
+    "be_mentioned_times_in_pr": 0,
+    "referred_other_issues_or_prs_in_issue": 0,
+    "referred_other_issues_or_prs_in_pr": 0,
+    "changed_label_times_in_issues": 0,
+    "changed_label_times_in_prs": 0,
+    "closed_issues_times": 0,
+    "closed_prs_times": 0
+  }
+},
+    {
+    "table_name": "dir2_analysis_v1",
+    "cluster_name": "replicated",
+    "database_name": "default",
+    "distributed_key": "ck_data_insert_at",
+    "table_engine": "ReplicatedMergeTree('/clickhouse/tables/{shard}/dir2_analysis_v1','{replica}')",
+    "partition_by": "owner",
+    "order_by": [
+      "owner",
+      "repo"
+    ],
+    "parse_data": {
+      "ck_data_insert_at": 0,
+      "department": "",
+      "owner": "",
+      "repo": "",
+      "dir_level2": "",
+      "domain_distribution": "",
+      "tz_distribution": "",
+      "email": "",
+      "sum_tz_commit_files_count": 0,
+      "tz_commit_files_count": "",
+      "profile_location": "",
+      "profile_company": "",
+      "inferred_from_location_country_or_region": "",
+      "inferred_from_location_locality_or_region": ""
     }
+  }
   ],
   "ck_alter_table_cols_datatype_tplt": [
     {
@@ -2870,6 +2998,9 @@
       }
     }
   ],
+  "dashboard_repo_list": [{"owner": "","repo": ""}],
+  "calculate_metrics_repo_list": [{"owner": "","repo": ""}],
+  "calculate_metrics_by_day_repos": [{"owner": "","repo": ""}],
   "mail_lists": [
     {
       "project_name": "gawk",
@@ -3035,10 +3166,45 @@
       "repo": ""
     }
   ],
+  "sync_repo_list": [
+    {
+      "owner": "",
+      "repo": ""
+    }
+  ],
   "maillist_repo": [
     {
       "project_name": "",
       "mail_list_name": ""
     }
-  ]
+  ],
+  "need_init_transfer_to_clickhouse":[
+        {
+            "index": "gits",
+            "repo_list": [
+                {
+                    "owner": "linruoma",
+                    "repo": "learngit"
+                }
+            ]
+        },
+        {
+            "index": "github_commits",
+            "repo_list": [
+                {
+                    "owner": "linruoma",
+                    "repo": "learngit"
+                }
+            ]
+        },
+        {
+            "index": "maillist",
+            "repo_list": [
+                {
+                    "project_name": "linruoma",
+                    "mail_list_name": "learngit"
+                }
+            ]
+        }
+    ]
 }
