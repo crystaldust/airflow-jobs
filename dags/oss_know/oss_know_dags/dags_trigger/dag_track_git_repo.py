@@ -89,7 +89,7 @@ with DAG(
         repo = kwargs['dag_run'].conf.get('repo')
         url = kwargs['dag_run'].conf.get('url')
         gits_args = [url, owner, repo, None, opensearch_conn_info, git_save_local_path]
-        exec_job_and_update_db(init_gits.init_sync_git_datas, callback, 'gits', args=gits_args, **kwargs)
+        exec_job_and_update_db(init_gits.init_git_datas, callback, 'gits', args=gits_args, **kwargs)
 
 
     def do_init_github_commits(callback, **kwargs):

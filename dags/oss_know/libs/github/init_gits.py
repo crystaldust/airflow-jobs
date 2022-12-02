@@ -131,7 +131,7 @@ def remove_flag_doc(client, owner, repo, doc_uuid):
             break
 
 
-def init_sync_git_datas(git_url, owner, repo, proxy_config, opensearch_conn_datas, git_save_local_path=None):
+def init_git_datas(git_url, owner, repo, opensearch_conn_datas, proxy_config=None, git_save_local_path=None):
     # 克隆版本库
     repo_path = f'{git_save_local_path["PATH"]}/{owner}/{repo}'
     if os.path.exists(repo_path):
@@ -153,7 +153,11 @@ def init_sync_git_datas(git_url, owner, repo, proxy_config, opensearch_conn_data
         "_index": OPENSEARCH_GIT_RAW,
         "_source": {
             "search_key": {
-                "owner": owner, "repo": repo, "origin": git_url, 'updated_at': 0, 'if_sync': 0
+                "owner": owner,
+                "repo": repo,
+                "origin": git_url,
+                'updated_at': 0,
+                'if_sync': 0
             },
             "raw_data": {
                 "message": "",
