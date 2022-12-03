@@ -6,12 +6,17 @@ from airflow.operators.python import PythonOperator
 
 from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_GITHUB_COMMITS
 from oss_know.libs.base_dict.variable_key import GITHUB_TOKENS, OPENSEARCH_CONN_DATA, PROXY_CONFS, \
-    DAILY_SYNC_GITHUB_COMMITS_EXCLUDES
+    DAILY_SYNC_GITHUB_COMMITS_EXCLUDES, CLICKHOUSE_DRIVER_INFO, CK_TABLE_DEFAULT_VAL_TPLT
 from oss_know.libs.github.sync_commits import sync_github_commits
 from oss_know.libs.util.base import get_opensearch_client
 from oss_know.libs.util.opensearch_api import OpensearchAPI
 from oss_know.libs.util.proxy import KuaiProxyService, ProxyManager, GithubTokenProxyAccommodator
 from oss_know.libs.util.token import TokenManager
+from oss_know.libs.clickhouse.sync_ck_transfer_data import sync_from_opensearch_to_clickhouse_by_repo
+from oss_know.libs.clickhouse.init_ck_transfer_data import parse_data_init
+
+opensearch_conn_info = Variable.get(OPENSEARCH_CONN_DATA, deserialize_json=True)
+clickhouse_conn_info = Variable.get(CLICKHOUSE_DRIVER_INFO, deserialize_json=True)
 
 with DAG(dag_id='daily_github_commits_sync',  # schedule_interval='*/5 * * * *',
          schedule_interval=None, start_date=datetime(2021, 1, 1), catchup=False,
@@ -25,7 +30,6 @@ with DAG(dag_id='daily_github_commits_sync',  # schedule_interval='*/5 * * * *',
 
     github_tokens = Variable.get(GITHUB_TOKENS, deserialize_json=True)
     proxy_confs = Variable.get(PROXY_CONFS, deserialize_json=True)
-    opensearch_conn_info = Variable.get(OPENSEARCH_CONN_DATA, deserialize_json=True)
     proxy_api_url = proxy_confs["api_url"]
     proxy_order_id = proxy_confs["orderid"]
     proxy_reserved_proxies = proxy_confs["reserved_proxies"]
@@ -40,12 +44,39 @@ with DAG(dag_id='daily_github_commits_sync',  # schedule_interval='*/5 * * * *',
                                                       policy=GithubTokenProxyAccommodator.POLICY_FIXED_MAP)
 
 
-    def do_sync_github_commits(params):
+    def do_sync_opensearch_github_commits(params):
         owner = params["owner"]
         repo = params["repo"]
 
         sync_github_commits(opensearch_conn_info, owner, repo, proxy_accommodator)
         return 'do_sync_github_commits:::end'
+
+
+    def do_sync_clickhouse_github_commits(params):
+        templates_var = Variable.get(CK_TABLE_DEFAULT_VAL_TPLT, deserialize_json=True)
+        github_commits_template = None
+        for template in templates_var:
+            if template.get("table_name") == "github_commits":
+                github_commits_template = template
+                break
+        if not github_commits_template:
+            raise Exception("Can not find gits table template")
+
+        import pandas as pd
+        df = pd.json_normalize(github_commits_template["temp"])
+        parsed_template = parse_data_init(df)
+
+        sync_from_opensearch_to_clickhouse_by_repo(
+            owner=params["owner"],
+            repo=params["repo"],
+            opensearch_conn_info=opensearch_conn_info,
+            opensearch_index=OPENSEARCH_INDEX_GITHUB_COMMITS,
+            clickhouse_conn_info=clickhouse_conn_info,
+            table_name=OPENSEARCH_INDEX_GITHUB_COMMITS,
+            template=parsed_template,
+        )
+
+        return 'do_sync_clickhouse_github_commits:::end'
 
 
     opensearch_client = get_opensearch_client(opensearch_conn_info=opensearch_conn_info)
@@ -58,11 +89,24 @@ with DAG(dag_id='daily_github_commits_sync',  # schedule_interval='*/5 * * * *',
         owner = uniq_item['owner']
         repo = uniq_item['repo']
 
-        op_do_sync_github_commits = PythonOperator(task_id=f'do_sync_github_commits_{owner}_{repo}',
-                                                   python_callable=do_sync_github_commits,
-                                                   op_kwargs={
-                                                       'params': {
-                                                           "owner": owner, "repo": repo
-                                                       }
-                                                   })
-        op_init_daily_github_commits_sync >> op_do_sync_github_commits
+        op_do_sync_opensearch_github_commits = PythonOperator(
+            task_id=f'do_sync_github_commits_{owner}_{repo}',
+            python_callable=do_sync_opensearch_github_commits,
+            op_kwargs={
+                'params': {
+                    "owner": owner,
+                    "repo": repo,
+                }
+            })
+
+        op_do_sync_clickhouse_github_commits = PythonOperator(
+            task_id=f'do_sync_clickhouse_github_commits_{owner}_{repo}',
+            python_callable=do_sync_clickhouse_github_commits,
+            op_kwargs={
+                'params': {
+                    "owner": owner,
+                    "repo": repo,
+                }
+            })
+
+        op_init_daily_github_commits_sync >> op_do_sync_opensearch_github_commits >> op_do_sync_clickhouse_github_commits
