@@ -1,15 +1,17 @@
 import copy
-import json
 import datetime
+import json
 import time
+from json import JSONDecodeError
+
 import pandas as pd
 import psycopg2
-from json import JSONDecodeError
 from airflow import AirflowException
 from clickhouse_driver.errors import ServerException
 from loguru import logger
 from opensearchpy import helpers
 from opensearchpy.exceptions import NotFoundError
+
 from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_CHECK_SYNC_DATA
 from oss_know.libs.clickhouse.init_ck_transfer_data import parse_data, get_table_structure, ck_check_point, \
     utc_timestamp, ck_check_point_repo, bulk_except, bulk_except_repo, ck_check_point_maillist
@@ -747,3 +749,76 @@ def keep_idempotent(ck, search_key, clickhouse_server_info, table_name, transfer
         wait_count += 1
         if wait_count == 60:
             raise Exception("等待时间过长，删除时间超时,无法保证幂等")
+
+
+def sync_from_opensearch_to_clickhouse_by_repo(owner, repo,
+                                               opensearch_conn_info, opensearch_index,
+                                               clickhouse_conn_info, table_name,
+                                               template):
+    ck_client = CKServer(host=clickhouse_conn_info["HOST"],
+                         port=clickhouse_conn_info["PORT"],
+                         user=clickhouse_conn_info["USER"],
+                         password=clickhouse_conn_info["PASSWD"],
+                         database=clickhouse_conn_info["DATABASE"])
+
+    fields = get_table_structure(table_name=table_name, ck=ck_client)
+
+    last_updated_at_sql = f"""
+    select search_key__updated_at
+    from {table_name}
+    where search_key__owner = '{owner}'
+      and search_key__repo = '{repo}'
+    order by search_key__updated_at desc
+    limit 1
+    """
+    result = ck_client.execute_no_params(last_updated_at_sql)
+    latest_updated_at = 0 if not result else result[0][0]
+    logger.info(f"Sync {owner}/{repo} from opensearch where search_key.updated_at > {latest_updated_at}")
+
+    opensearch_data = get_data_from_opensearch_by_repo(opensearch_index=opensearch_index,
+                                                       opensearch_conn_datas=opensearch_conn_info,
+                                                       owner=owner,
+                                                       repo=repo,
+                                                       latest_updated_at=latest_updated_at)
+
+    max_timestamp = 0
+    num_inserted = 0
+    bulk_data = []
+    batch_size = 20000
+    ck_sql = f"INSERT INTO {table_name} VALUES"
+
+    for doc in opensearch_data:
+        updated_at = doc["_source"]["search_key"]["updated_at"]
+        if updated_at > max_timestamp:
+            max_timestamp = updated_at
+        df_data = doc["_source"]
+
+        df = pd.json_normalize(df_data)
+        dict_data = parse_data(df, template)
+        try:
+            dict_dict = json.loads(json.dumps(dict_data))
+        except JSONDecodeError as error:
+            logger.error(error)
+            continue
+        for field in fields:
+            if dict_dict.get(field) and fields.get(field) == 'DateTime64(3)':
+                dict_dict[field] = datetime.datetime.strptime(dict_dict[field], '%Y-%m-%dT%H:%M:%SZ')
+            elif fields.get(field) == 'String':
+                try:
+                    dict_dict[field].encode('utf-8')
+                except UnicodeEncodeError as error:
+                    dict_dict[field] = dict_dict[field].encode('unicode-escape').decode('utf-8')
+        dict_dict['ck_data_insert_at'] = int(time.time() * 1000)
+        bulk_data.append(dict_dict)
+
+        if len(bulk_data) >= batch_size:
+            ck_client.execute_no_params(ck_sql, bulk_data)
+            bulk_data = []
+            num_inserted += len(bulk_data)
+            logger.info(f"已经同步{num_inserted}条数据")
+
+    # 处理尾部多余的数据
+    if bulk_data:
+        ck_client.execute(ck_sql, bulk_data)
+        num_inserted += len(bulk_data)
+        logger.info(f'已经插入的数据的条数为:{num_inserted}')
