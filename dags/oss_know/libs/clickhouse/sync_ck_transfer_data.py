@@ -504,194 +504,47 @@ def if_data_eq_maillist(opensearch_conn_datas, ck, table_name, project_name, mai
     return count == result[0][0]
 
 
-def get_data_from_opensearch_by_repo(opensearch_index, opensearch_conn_datas, clickhouse_table, repo, transfer_type):
+def get_data_from_opensearch_by_repo(opensearch_index, opensearch_conn_datas, owner, repo, latest_updated_at):
     opensearch_client = get_opensearch_client(opensearch_conn_info=opensearch_conn_datas)
-    if transfer_type == 'github_git_sync_by_repo' or transfer_type == 'github_issues_timeline_by_repo':
-        body = {
-            "size": 1,
-            "query": {
-                "bool": {
-                    "must": [
-                        {
-                            "term": {
-                                "search_key.type.keyword": {
-                                    "value": "os_ck"
-                                }
-                            }
-                        },
-                        {
-                            "term": {
-                                "search_key.opensearch_index.keyword": {
-                                    "value": opensearch_index
-                                }
-                            }
-                        },
-                        {
-                            "term": {
-                                "search_key.clickhouse_table.keyword": {
-                                    "value": clickhouse_table
-                                }
-                            }
-                        },
-                        {
-                            "term": {
-                                "search_key.owner.keyword": {
-                                    "value": repo.get('owner')
-                                }
-                            }
-                        },
-                        {
-                            "term": {
-                                "search_key.repo.keyword": {
-                                    "value": repo.get('repo')
-                                }
-                            }
+    scan_body = {
+        "query": {
+            "bool": {
+                "filter": [
+                    {"range": {
+
+                        "search_key.updated_at": {
+                            "gt": latest_updated_at
                         }
-                    ]
-                }
-            },
-            "sort": [
-                {
-                    "search_key.update_timestamp": {
-                        "order": "desc"
-                    }
-                }
-            ]
-        }
-    else:
-        body = {
-            "size": 1,
-            "query": {
-                "bool": {
-                    "must": [
-                        {
-                            "term": {
-                                "search_key.type.keyword": {
-                                    "value": "os_ck"
-                                }
-                            }
-                        },
-                        {
-                            "term": {
-                                "search_key.opensearch_index.keyword": {
-                                    "value": opensearch_index
-                                }
-                            }
-                        },
-                        {
-                            "term": {
-                                "search_key.clickhouse_table.keyword": {
-                                    "value": clickhouse_table
-                                }
-                            }
-                        },
-                        {
-                            "term": {
-                                "search_key.project_name.keyword": {
-                                    "value": repo.get('project_name')
-                                }
-                            }
-                        },
-                        {
-                            "term": {
-                                "search_key.mail_list_name.keyword": {
-                                    "value": repo.get('mail_list_name')
-                                }
-                            }
+                    }}
+                ], "must": [
+                    {"term": {
+                        "search_key.owner.keyword": {
+                            "value": owner
                         }
-                    ]
+                    }}, {"term": {
+                        "search_key.repo.keyword": {
+                            "value": repo
+                        }
+                    }}
+                ]
+            }
+        },
+        "sort": [
+            {
+                "search_key.updated_at": {
+                    "order": "asc"
                 }
-            },
-            "sort": [
-                {
-                    "search_key.update_timestamp": {
-                        "order": "desc"
-                    }
-                }
-            ]
-        }
-    # 获取上一次的检查点
-    response = opensearch_client.search(index=OPENSEARCH_INDEX_CHECK_SYNC_DATA, body=body)
-    if response['hits']['hits']:
-        last_check_timestamp = response['hits']['hits'][0]["_source"]["os_ck"]["last_data"]["updated_at"]
-        last_update_time = response['hits']['hits'][0]["_source"]['search_key']['update_time']
-        logger.info(f"上一次的检查点的时间戳是{last_check_timestamp}")
-        logger.info(f'上一次同步clickhouse和opensearch数据的时间是{last_update_time}')
-    else:
-        raise Exception("没找到上一次检查点的任何信息")
-    if transfer_type == 'github_git_sync_by_repo':
-        scan_body = {
-            "query": {
-                "bool": {
-                    "filter": [
-                        {"range": {
+            }
+        ]
+    }
 
-                            "search_key.updated_at": {
-
-                                "gte": last_check_timestamp
-                            }
-                        }}
-                    ], "must": [
-                        {"term": {
-                            "search_key.owner.keyword": {
-                                "value": repo.get('owner')
-                            }
-                        }}, {"term": {
-                            "search_key.repo.keyword": {
-                                "value": repo.get('repo')
-                            }
-                        }}
-                    ]
-                }
-            },
-            "sort": [
-                {
-                    "search_key.updated_at": {
-                        "order": "asc"
-                    }
-                }
-            ]
-        }
-    else:
-        scan_body = {
-            "query": {
-                "bool": {
-                    "filter": [
-                        {"range": {
-
-                            "search_key.updated_at": {
-
-                                "gte": last_check_timestamp
-                            }
-                        }}
-                    ], "must": [
-                        {"term": {
-                            "search_key.project_name.keyword": {
-                                "value": repo.get('project_name')
-                            }
-                        }}, {"term": {
-                            "search_key.mail_list_name.keyword": {
-                                "value": repo.get('mail_list_name')
-                            }
-                        }}
-                    ]
-                }
-            },
-            "sort": [
-                {
-                    "search_key.updated_at": {
-                        "order": "asc"
-                    }
-                }
-            ]
-        }
     results = helpers.scan(client=opensearch_client,
                            query=scan_body, index=opensearch_index,
                            size=5000,
                            scroll="20m",
                            request_timeout=100,
                            preserve_order=True)
-    return results, opensearch_client, last_check_timestamp
+    return results
 
 
 def keep_idempotent(ck, search_key, clickhouse_server_info, table_name, transfer_type, search_key__updated_at):
