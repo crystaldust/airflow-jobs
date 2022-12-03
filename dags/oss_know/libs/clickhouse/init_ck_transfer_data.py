@@ -1,22 +1,20 @@
+import copy
 import datetime
 import json
 import time
-import numpy
-import random
-import pandas as pd
-import psycopg2
 import warnings
-import copy
-from clickhouse_driver.columns.exceptions import StructPackException
 from json import JSONDecodeError
+
+import numpy
+import pandas as pd
+from airflow.exceptions import AirflowException
 from clickhouse_driver.errors import ServerException
 from loguru import logger
 from opensearchpy import helpers
-from airflow.exceptions import AirflowException
 from opensearchpy.exceptions import NotFoundError
+
 from oss_know.libs.base_dict.clickhouse import CLICKHOUSE_RAW_DATA
-from oss_know.libs.util.airflow import get_postgres_conn
-from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_GIT_RAW, OPENSEARCH_INDEX_CHECK_SYNC_DATA
+from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_CHECK_SYNC_DATA
 from oss_know.libs.util.base import get_opensearch_client
 from oss_know.libs.util.clickhouse_driver import CKServer
 
