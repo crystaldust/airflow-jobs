@@ -52,8 +52,8 @@ with DAG(
 
         owner = params["owner"]
         repo = params["repo"]
-        since = params["since"]
-        until = params["until"]
+        since = params.get("since")
+        until = params.get("until")
 
         init_commits.init_github_commits(opensearch_conn_info, owner, repo, proxy_accommodator, since, until)
         return params

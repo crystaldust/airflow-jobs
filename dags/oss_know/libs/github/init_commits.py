@@ -1,3 +1,4 @@
+import datetime
 import itertools
 import random
 import requests
@@ -25,6 +26,12 @@ def init_github_commits(opensearch_conn_info, owner, repo,
     session = requests.Session()
     github_api = GithubAPI()
     opensearch_api = OpensearchAPI()
+
+    if not until:
+        until = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
+    if not since:
+        since = "1980-01-01T00:00:00Z"
+
     for page in range(1, 99999):
         time.sleep(random.uniform(GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX))
         # 获取一页 github commits
