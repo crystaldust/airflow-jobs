@@ -626,7 +626,8 @@ def sync_from_opensearch_to_clickhouse_by_repo(owner, repo,
     """
     result = ck_client.execute_no_params(last_updated_at_sql)
     latest_updated_at = 0 if not result else result[0][0]
-    logger.info(f"Sync {owner}/{repo} from opensearch where search_key.updated_at > {latest_updated_at}")
+    logger.info(
+        f"Sync {opensearch_index} {owner}/{repo} from opensearch where search_key.updated_at > {latest_updated_at}")
 
     opensearch_data = get_data_from_opensearch_by_repo(opensearch_index=opensearch_index,
                                                        opensearch_conn_datas=opensearch_conn_info,
@@ -665,10 +666,10 @@ def sync_from_opensearch_to_clickhouse_by_repo(owner, repo,
         bulk_data.append(dict_dict)
 
         if len(bulk_data) >= batch_size:
-            ck_client.execute_no_params(ck_sql, bulk_data)
-            bulk_data = []
+            ck_client.execute(ck_sql, bulk_data)
             num_inserted += len(bulk_data)
             logger.info(f"已经同步{num_inserted}条数据")
+            bulk_data = []
 
     # 处理尾部多余的数据
     if bulk_data:

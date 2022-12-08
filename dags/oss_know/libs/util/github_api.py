@@ -1,5 +1,7 @@
 import copy
 
+import requests
+
 from oss_know.libs.exceptions import GithubResourceNotFoundError, GithubInternalServerError
 from oss_know.libs.util.base import do_get_github_result, EmptyObjectResponse
 from oss_know.libs.util.log import logger
@@ -111,3 +113,21 @@ class GithubAPI:
         except GithubInternalServerError as gise:
             logger.warning(f'Failed to get pull request {url}, the Github Internal Server Error: {gise}')
         return res
+
+    def check_token_limits(self, tokens):
+        url = 'http://api.github.com/rate_limit'
+
+        total_rate_limit = 0
+        for token in tokens:
+            http_session = requests.Session()
+            headers = copy.deepcopy(self.github_headers)
+            headers['Authorization'] = f'token {token}'
+            try:
+                res = http_session.get(url, headers=headers)
+                total_rate_limit += res.json()['resources']['core']['remaining']
+            except GithubResourceNotFoundError as e:
+                logger.warning(f'Failed to get pull request {url}, the resource does not exist: {e}')
+            except GithubInternalServerError as gise:
+                logger.warning(f'Failed to get pull request {url}, the Github Internal Server Error: {gise}')
+
+        return total_rate_limit

@@ -42,3 +42,5 @@ PROXY_CONFS = "proxy_confs"
 REPO_LIST = "repo_list"
 SYNC_REPO_LIST = "sync_repo_list"
 MAILLIST_REPO = "maillist_repo"
+
+MIN_GITHUB_TOKEN_REMAINING = 'min_github_token_remaining'

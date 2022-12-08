@@ -1388,6 +1388,24 @@
         "To": "",
         "is_pipermail_message": 0
       }
+    },
+    {
+      "table_name": "github_issues_timeline",
+      "temp": {
+        "search_key": {
+          "owner": "",
+          "repo": "",
+          "number": 0,
+          "event": "",
+          "updated_at": 0,
+          "uuid": "",
+          "if_sync": 0
+        },
+        "deleted": 0,
+        "raw_data": {
+          "timeline_raw": ""
+        }
+      }
     }
   ],
   "ck_create_table_cols_datatype_tplt": [
