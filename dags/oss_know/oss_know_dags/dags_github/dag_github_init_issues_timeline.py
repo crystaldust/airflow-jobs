@@ -1,15 +1,16 @@
 from datetime import datetime
 
 from airflow import DAG
+from airflow.models import Variable
 from airflow.operators.python import PythonOperator
-
-# v0.0.1
-from opensearchpy import OpenSearch
 
 from oss_know.libs.base_dict.variable_key import NEED_INIT_GITHUB_ISSUES_TIMELINE_REPOS, GITHUB_TOKENS, \
     OPENSEARCH_CONN_DATA, PROXY_CONFS
+from oss_know.libs.github import init_issues_timeline
 from oss_know.libs.util.proxy import KuaiProxyService, ProxyManager, GithubTokenProxyAccommodator
 from oss_know.libs.util.token import TokenManager
+
+# v0.0.1
 
 with DAG(
         dag_id='github_init_issues_timeline_v1',
@@ -29,8 +30,6 @@ with DAG(
 
 
     def do_init_github_issues_timeline(params):
-        from airflow.models import Variable
-        from oss_know.libs.github import init_issues_timeline
 
         github_tokens = Variable.get(GITHUB_TOKENS, deserialize_json=True)
         opensearch_conn_info = Variable.get(OPENSEARCH_CONN_DATA, deserialize_json=True)
@@ -58,19 +57,14 @@ with DAG(
         return params
 
 
-    need_do_init_ops = []
-
-
-    from airflow.models import Variable
-
     need_init_github_issues_timeline_repos = Variable.get(NEED_INIT_GITHUB_ISSUES_TIMELINE_REPOS,
                                                           deserialize_json=True)
 
     for need_init_github_issues_timeline_repo in need_init_github_issues_timeline_repos:
+        owner = need_init_github_issues_timeline_repo["owner"]
+        repo = need_init_github_issues_timeline_repo["repo"]
         op_do_init_github_issues_timeline = PythonOperator(
-            task_id='op_do_init_github_issues_timeline_{owner}_{repo}'.format(
-                owner=need_init_github_issues_timeline_repo["owner"],
-                repo=need_init_github_issues_timeline_repo["repo"]),
+            task_id=f'op_do_init_github_issues_timeline_{owner}_{repo}',
             python_callable=do_init_github_issues_timeline,
             op_kwargs={'params': need_init_github_issues_timeline_repo},
         )

@@ -32,6 +32,11 @@ with DAG(
         return 'End::init_mail_list'
 
 
+    def do_ck_transfer_mail_list(params):
+        
+        pass
+
+
     mail_lists = Variable.get(MAIL_LISTS, deserialize_json=True)
 
     for mail_list in mail_lists:

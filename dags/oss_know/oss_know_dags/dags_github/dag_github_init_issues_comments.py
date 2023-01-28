@@ -1,8 +1,8 @@
 from datetime import datetime
 
 from airflow import DAG
+from airflow.models import Variable
 from airflow.operators.python import PythonOperator
-from opensearchpy import OpenSearch
 
 from oss_know.libs.base_dict.variable_key import OPENSEARCH_CONN_DATA, GITHUB_TOKENS, PROXY_CONFS
 from oss_know.libs.util.proxy import KuaiProxyService, ProxyManager, GithubTokenProxyAccommodator
@@ -56,19 +56,14 @@ with DAG(
         return params
 
 
-    need_do_init_ops = []
-
-
-    from airflow.models import Variable
-
     need_init_github_issues_comments_repos = Variable.get(NEED_INIT_SYNC_GITHUB_ISSUES_COMMENTS_REPOS,
                                                           deserialize_json=True)
 
     for need_init_github_issues_comments_repo in need_init_github_issues_comments_repos:
+        owner = need_init_github_issues_comments_repo["owner"]
+        repo = need_init_github_issues_comments_repo["repo"]
         op_do_init_github_issues_comments = PythonOperator(
-            task_id='op_do_init_github_issues_comments_{owner}_{repo}'.format(
-                owner=need_init_github_issues_comments_repo["owner"],
-                repo=need_init_github_issues_comments_repo["repo"]),
+            task_id=f'op_do_init_github_issues_comments_{owner}_{repo}',
             python_callable=do_init_github_issues_comments,
             op_kwargs={'params': need_init_github_issues_comments_repo},
         )
