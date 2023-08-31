@@ -143,6 +143,9 @@ def get_func_info_py(repo, compounddefs):
     return lines_to_func
 
 
+handled_files = 0
+
+
 def abstract_func(owner, repo, opensearch_conn_info):
     # Use doxygen to parse GitHub repo files into xml format
     # file_path = "/opt/workspace/DoxygenInput/" + repo
@@ -154,32 +157,49 @@ def abstract_func(owner, repo, opensearch_conn_info):
     # arg = "./doxygen.cfg"
 
     # suc = os.system(command)
-    result = subprocess.run([command, arg], env=environment_varible, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            text=True)
 
-    if not result.returncode:
+    # DEBUGGGG
+    # result = subprocess.run([command, arg], env=environment_varible,
+    #                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    if True:
+        # not result.returncode:
+
         # file_dir = "/opt/workspace/DoxygenResult/RepoXml/"
         # file_pre = file_dir + "xml/"
         # file_post = ".xml"
         sub_filenames = get_subfilename(file_pre + "index.xml")
 
+        num_files = len(sub_filenames)
+
         # funcs_to_lines = {repo: {}}
         # lines_to_funcs = {repo: {}}
         lines_to_funcs = []
-        pbar_sub_filenames = tqdm(sub_filenames)
-        
-        for sub_filename in pbar_sub_filenames:
+        # pbar_sub_filenames = tqdm(sub_filenames)
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
+        futures = []
+
+        def handler(sub_filename):
             tree = ET.parse(file_pre + sub_filename + file_post)
             root = tree.getroot()
             compounddefs = root.findall("compounddef")
             if compounddefs[0].attrib['language'] == "Python":  # Get functions from files written in python
                 lines_dict = get_func_info_py(repo, compounddefs)
             else:
-                lines_dict = get_func_info(repo, compounddefs)  # Get functions from files written in other languages
-            # funcs_to_lines[repo].update(func_key)
-            # lines_to_funcs[repo].update(lines_key)
+                lines_dict = get_func_info(repo, compounddefs)
             lines_to_funcs.extend(lines_dict)
-            pbar_sub_filenames.set_description("Processing %s" % sub_filename)
+            global handled_files
+            handled_files += 1
+            print(f'{handled_files / num_files * 100} %')
+            # pbar_sub_filenames.set_description("Processing %s" % sub_filename)
+            # print(sub_filename)
+
+        with ThreadPoolExecutor(max_workers=50) as executor:
+            for sub_filename in sub_filenames:
+                futures.append(executor.submit(handler, sub_filename))
+
+            [f.result() for f in as_completed(futures)]
 
         put_intermediate_data_to_opensearch(owner, repo, opensearch_conn_info, lines_to_funcs)
         return lines_to_funcs
