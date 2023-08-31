@@ -6,7 +6,7 @@ from tqdm import tqdm
 from oss_know.libs.util.log import logger
 from oss_know.libs.socio_technical_network_lib.interact_with_opensearch import put_intermediate_data_to_opensearch
 
-file_dir = "/opt/workspace/DoxygenResult/RepoXml/"
+file_dir = "/tmp/RepoXml/"
 file_pre = file_dir + "xml/"
 file_post = ".xml"
 OPENSEARCH_DOXYGEN_RESULT = "doxygen_result"
@@ -145,15 +145,17 @@ def get_func_info_py(repo, compounddefs):
 
 def abstract_func(owner, repo, opensearch_conn_info):
     # Use doxygen to parse GitHub repo files into xml format
-    file_path = "/opt/workspace/DoxygenInput/" + repo
+    # file_path = "/opt/workspace/DoxygenInput/" + repo
+    file_path = f'/home/lance/Development/gits_for_dev/{owner}/{repo}'
     # environment_varible = "INPUT_PATH=" + file_path
     environment_varible = {"INPUT_PATH": file_path}
     command = "doxygen"
-    arg = "oss_know/libs/socio_technical_network_lib/doxygen.cfg"
+    arg = "/home/lance/Development/py/airflow-jobs/dags/oss_know/libs/socio_technical_network_lib/doxygen.cfg"
     # arg = "./doxygen.cfg"
 
     # suc = os.system(command)
-    result = subprocess.run([command, arg], env=environment_varible, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run([command, arg], env=environment_varible, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True)
 
     if not result.returncode:
         # file_dir = "/opt/workspace/DoxygenResult/RepoXml/"
@@ -165,6 +167,7 @@ def abstract_func(owner, repo, opensearch_conn_info):
         # lines_to_funcs = {repo: {}}
         lines_to_funcs = []
         pbar_sub_filenames = tqdm(sub_filenames)
+        
         for sub_filename in pbar_sub_filenames:
             tree = ET.parse(file_pre + sub_filename + file_post)
             root = tree.getroot()
@@ -172,7 +175,7 @@ def abstract_func(owner, repo, opensearch_conn_info):
             if compounddefs[0].attrib['language'] == "Python":  # Get functions from files written in python
                 lines_dict = get_func_info_py(repo, compounddefs)
             else:
-                lines_dict = get_func_info(repo, compounddefs) # Get functions from files written in other languages
+                lines_dict = get_func_info(repo, compounddefs)  # Get functions from files written in other languages
             # funcs_to_lines[repo].update(func_key)
             # lines_to_funcs[repo].update(lines_key)
             lines_to_funcs.extend(lines_dict)
