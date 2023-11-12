@@ -377,11 +377,26 @@ def arrange_owner_repo_into_letter_groups(owner_repos):
     return groups
 
 
+def arrange_owner_repo_into_letter_groups_by_repo(owner_repos):
+    groups = {'other': []}
+    for letter in ascii_lowercase:
+        groups[letter] = []
+    repo = ''
+    for item in owner_repos:
+        if type(item) == tuple:
+            _, repo = item
+        elif type(item) == dict:
+            repo = item['repo']
+        capital_letter = repo[0].lower()
+        key = capital_letter if capital_letter in groups else 'other'
+        groups[key].append(item)
+
+    return groups
+
+
 def unify_gits_origin(origin):
     # TODO For python 3.9, there is a new string method removesuffix
     # The code below works for 3.8 or lower
     if str(origin).endswith('.git'):
         return origin[:-4]
     return origin
-
-
