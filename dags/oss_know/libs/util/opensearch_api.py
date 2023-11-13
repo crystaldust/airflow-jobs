@@ -509,6 +509,7 @@ class OpensearchAPI:
     # -----------------------------------------
 
     def do_opensearch_bulk_error_callback(retry_state):
+        return
         postgres_conn = get_postgres_conn()
         sql = '''INSERT INTO retry_data(
                     owner, repo, type, data)

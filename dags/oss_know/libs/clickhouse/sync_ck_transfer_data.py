@@ -187,23 +187,23 @@ def sync_transfer_data(clickhouse_server_info, opensearch_index, table_name, ope
                 result = ck.execute(sql, [dict_data])
             except KeyError as error:
                 logger.error(f'插入数据发现错误 {error}')
-                postgres_conn = get_postgres_conn()
-                sql = '''INSERT INTO os_ck_errar(
-                                    index, data) 
-                                    VALUES (%s, %s);'''
-                try:
-                    cur = postgres_conn.cursor()
-                    os_index = table_name
-                    error_data = json.dumps(os_data['_source'])
-                    cur.execute(sql, (os_index, error_data))
-                    postgres_conn.commit()
-                    cur.close()
-                except (psycopg2.DatabaseError) as error:
-                    logger.error(f"psycopg2.DatabaseError:{error}")
-
-                finally:
-                    if postgres_conn is not None:
-                        postgres_conn.close()
+                #  postgres_conn = get_postgres_conn()
+                #  sql = '''INSERT INTO os_ck_errar(
+                #                      index, data)
+                #                      VALUES (%s, %s);'''
+                #  try:
+                #      cur = postgres_conn.cursor()
+                #      os_index = table_name
+                #      error_data = json.dumps(os_data['_source'])
+                #      cur.execute(sql, (os_index, error_data))
+                #      postgres_conn.commit()
+                #      cur.close()
+                #  except (psycopg2.DatabaseError) as error:
+                #      logger.error(f"psycopg2.DatabaseError:{error}")
+                #
+                #  finally:
+                #      if postgres_conn is not None:
+                #          postgres_conn.close()
 
     # airflow dag的中断
     except AirflowException as error:
