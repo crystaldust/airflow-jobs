@@ -43,7 +43,7 @@ def sync_git_check_update_info(opensearch_client, owner, repo, head_commit):
     logger.info(response)
 
 
-def delete_old_data(owner, repo, client,index, sync=True):
+def delete_old_data(owner, repo, client, index, sync=True):
     query_body = {
         "query": {
             "bool": {
@@ -137,7 +137,7 @@ def init_gits_repo(git_url, owner, repo, proxy_config, opensearch_conn_datas, gi
     if os.path.exists(repo_path):
         shutil.rmtree(repo_path)
 
-    repo_info = Repo.clone_from(url=git_url, to_path=repo_path, config=proxy_config)
+    repo_info = Repo.clone_from(url=git_url, to_path=repo_path)
 
     opensearch_client = get_opensearch_client(opensearch_conn_info=opensearch_conn_datas)
     # 删除在数据库中已经存在的此项目数据
@@ -147,7 +147,7 @@ def init_gits_repo(git_url, owner, repo, proxy_config, opensearch_conn_datas, gi
     # Since the daily-sync DAGs read uniq (owner, repo) pairs from OpenSearch with aggs. The data deletion
     # might make the daily-sync lose some being-deleted (owner, repo) pairs without place holder.
     flag_doc_uuid = insert_flag_doc(opensearch_client, owner, repo)
-    delete_old_data(owner=owner, repo=repo,index=OPENSEARCH_GIT_RAW, client=opensearch_client)
+    delete_old_data(owner=owner, repo=repo, index=OPENSEARCH_GIT_RAW, client=opensearch_client)
     remove_flag_doc(opensearch_client, owner, repo, flag_doc_uuid)
     bulk_data_tp = {
         "_index": OPENSEARCH_GIT_RAW,

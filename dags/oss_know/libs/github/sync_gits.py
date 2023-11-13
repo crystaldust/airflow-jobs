@@ -16,6 +16,7 @@ def timestamp_to_utc(timestamp):
 
 
 def sync_gits_opensearch(git_url, owner, repo, proxy_config, opensearch_conn_datas, git_save_local_path=None):
+    print('syncing opensearch gits for ', owner, repo)
     repo_path = f'{git_save_local_path["PATH"]}/{owner}/{repo}'
     check_point_timestamp = int(datetime.datetime.now().timestamp() * 1000)
 
@@ -37,7 +38,7 @@ def sync_gits_opensearch(git_url, owner, repo, proxy_config, opensearch_conn_dat
         git_repo = Repo(repo_path)
         git_repo.remote('origin').fetch()
     else:
-        git_repo = Repo.clone_from(url=git_url, to_path=repo_path, config=proxy_config)
+        git_repo = Repo.clone_from(url=git_url, to_path=repo_path)
 
     head_in_os = os_repo_commits['hits']['hits'][0]['_source']['raw_data']['hexsha']
 
