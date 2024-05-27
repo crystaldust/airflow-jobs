@@ -36,6 +36,9 @@ class concurrent_threads(Thread):
         :param args: 被测试的函数的返回值
         '''
         super(concurrent_threads, self).__init__()
+        print(
+            "[WARNING] The concurrent_threads is unstable and will be dropped in the future, try replace it with the"
+            " built-in ThreadPoolExecutor")
         self.func = func
         self.args = args
 
