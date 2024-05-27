@@ -123,9 +123,10 @@ def do_get_github_timeline(opensearch_client, token_proxy_accommodator, owner, r
     github_api = GithubAPI()
     opensearch_api = OpensearchAPI()
 
-    for page in range(1, 10000):
+    page = 1
+    while True:
         time.sleep(random.uniform(GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX))
-
+        one_page_github_issues_timeline = None
         try:
             req = github_api.get_github_issues_timeline(
                 req_session, token_proxy_accommodator, owner, repo, number, page)
@@ -135,8 +136,7 @@ def do_get_github_timeline(opensearch_client, token_proxy_accommodator, owner, r
                 f"Failed initing github timeline, {owner}/{repo}, issues_number:{number}, now_page:{page}, Target timeline info does not exist: {e}, end")
             # return 403, e
 
-        if (one_page_github_issues_timeline is not None) and len(
-                one_page_github_issues_timeline) == 0:
+        if not one_page_github_issues_timeline:
             logger.info(f"success init github timeline, {owner}/{repo}, issues_number:{number}, page_count:{page}, end")
             return 200, f"success init github timeline, {owner}/{repo}, issues_number:{number}, page_count:{page}, end"
 
@@ -145,3 +145,4 @@ def do_get_github_timeline(opensearch_client, token_proxy_accommodator, owner, r
                                                    owner=owner, repo=repo, number=number, if_sync=0)
 
         logger.info(f"success get github timeline, {owner}/{repo}, issues_number:{number}, page_index:{page}, end")
+        page += 1
