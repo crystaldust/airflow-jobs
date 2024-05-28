@@ -28,6 +28,7 @@ def init_github_issues(opensearch_conn_infos, owner, repo, token_proxy_accommoda
     session = requests.Session()
     github_api = GithubAPI()
     opensearch_api = OpensearchAPI()
+
     for page in range(1, 100000):
         # Token sleep
         time.sleep(random.uniform(GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX))
@@ -49,6 +50,4 @@ def init_github_issues(opensearch_conn_infos, owner, repo, token_proxy_accommoda
         logger.info(f"success get github issues page:{owner}/{repo} page_index:{page}")
 
     # 建立 sync 标志
-    opensearch_api.set_sync_github_issues_check(opensearch_client, owner, repo,now_time)
-
-
+    opensearch_api.set_sync_github_issues_check(opensearch_client, owner, repo, now_time)

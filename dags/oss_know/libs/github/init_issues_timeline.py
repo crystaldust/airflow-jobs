@@ -1,22 +1,18 @@
 import random
 import time
-import requests
-import datetime
-import numpy as np
-import json
-from threading import Thread
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import requests
 from opensearchpy import OpenSearch
 from opensearchpy import helpers as opensearch_helpers
 
 from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_GITHUB_ISSUES, \
     OPENSEARCH_INDEX_GITHUB_ISSUES_TIMELINE
+from oss_know.libs.base_dict.options import GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX
 from oss_know.libs.exceptions import GithubResourceNotFoundError
-from oss_know.libs.util.base import concurrent_threads
-from oss_know.libs.util.github_api import GithubAPI, GithubException
+from oss_know.libs.util.github_api import GithubAPI
 from oss_know.libs.util.log import logger
 from oss_know.libs.util.opensearch_api import OpensearchAPI
-from oss_know.libs.base_dict.options import GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX
 
 
 def init_sync_github_issues_timeline(opensearch_conn_info, owner, repo, token_proxy_accommodator, since=None):
@@ -80,52 +76,67 @@ def init_sync_github_issues_timeline(opensearch_conn_info, owner, repo, token_pr
                                                    request_timeout=120,
                                                    )
 
-    logger.info(f"DELETE github issues_timeline result:", del_result)
+    logger.info(f"DELETE github issues_timeline result: {del_result}")
 
-    get_timeline_tasks = list()
-    get_timeline_results = list()
     get_timeline_fails_results = list()
-    for idx, now_item in enumerate(need_init_all_results):
-        number = now_item["_source"]["raw_data"]["number"]
 
-        # 创建并发任务
-        ct = concurrent_threads(do_get_github_timeline,
-                                args=(opensearch_client, token_proxy_accommodator, owner, repo, number))
-        get_timeline_tasks.append(ct)
-        ct.start()
-        # 执行并发任务并获取结果
-        if idx % 10 == 0:
-            for tt in get_timeline_tasks:
-                tt.join()
-                if tt.getResult()[0] != 200:
-                    logger.info(f"get_timeline_fails_results:{tt},{tt.args}")
-                    get_timeline_fails_results.append(tt.getResult())
+    def handle_batch(batch):
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = []
+            for idx, now_item in enumerate(batch):
+                number = now_item["_source"]["raw_data"]["number"]
+                futures.append(
+                    executor.submit(do_get_github_timeline, opensearch_client, token_proxy_accommodator, owner, repo,
+                                    number))
+            for f in as_completed(futures):
+                status_code, msg = f.result()
+                if status_code != 200:
+                    logger.error(f"Failed to init timeline: {msg}")
+                    get_timeline_fails_results.append(status_code)
 
-                get_timeline_results.append(tt.getResult())
-        if len(get_timeline_fails_results) != 0:
-            raise GithubException('github请求失败！', get_timeline_fails_results)
+    batch_size = 10  # 10 timelines data in a batch
+    num_handled = 0
+    batch = []
+    for idx, timeline_data in enumerate(need_init_all_results):
+        batch.append(timeline_data)
+        if len(batch) >= batch_size:
+            handle_batch(batch)
+            num_handled += batch_size
+            batch.clear()
+
+            logger.info(f'{num_handled} timeline data processed')
+
+    if batch:
+        handle_batch(batch)
+        num_handled += len(batch)
+        batch.clear()
+        logger.info(f'Finally, {num_handled} timeline data processed')
+
+    # TODO Should it be thrown as exception?
+    #  Or just remain the fails and the missing data will be covered in the daily sync process?
+    if get_timeline_fails_results:
+        logger.error(f'{len(get_timeline_fails_results)} timeline data items failed to init')
 
 
-# 在concurrent_threads中执行并发具体的业务方法
 def do_get_github_timeline(opensearch_client, token_proxy_accommodator, owner, repo, number):
     req_session = requests.Session()
     github_api = GithubAPI()
     opensearch_api = OpensearchAPI()
 
-    for page in range(1, 10000):
+    page = 1
+    while True:
         time.sleep(random.uniform(GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX))
-
+        one_page_github_issues_timeline = None
         try:
             req = github_api.get_github_issues_timeline(
                 req_session, token_proxy_accommodator, owner, repo, number, page)
             one_page_github_issues_timeline = req.json()
         except GithubResourceNotFoundError as e:
             logger.error(
-                f"fail init github timeline, {owner}/{repo}, issues_number:{number}, now_page:{page}, Target timeline info does not exist: {e}, end")
+                f"Failed initing github timeline, {owner}/{repo}, issues_number:{number}, now_page:{page}, Target timeline info does not exist: {e}, end")
             # return 403, e
 
-        if (one_page_github_issues_timeline is not None) and len(
-                one_page_github_issues_timeline) == 0:
+        if not one_page_github_issues_timeline:
             logger.info(f"success init github timeline, {owner}/{repo}, issues_number:{number}, page_count:{page}, end")
             return 200, f"success init github timeline, {owner}/{repo}, issues_number:{number}, page_count:{page}, end"
 
@@ -134,3 +145,4 @@ def do_get_github_timeline(opensearch_client, token_proxy_accommodator, owner, r
                                                    owner=owner, repo=repo, number=number, if_sync=0)
 
         logger.info(f"success get github timeline, {owner}/{repo}, issues_number:{number}, page_index:{page}, end")
+        page += 1
