@@ -157,7 +157,9 @@ def sync_from_remote_by_repo(local_ck_conn_info, remote_ck_conn_info, table_name
     """
     result = local_ck_client.execute_no_params(new_insert_count_sql)
     new_insert_count = 0 if not result else result[0][0]
-    logger.info(f"Synced {new_insert_count} rows for {owner}/{repo}(updated_at > {local_latest_updated_at})")
+    logger.info(
+        f"Synced {new_insert_count} rows for {owner}/{repo}(updated_at > {local_latest_updated_at})"
+        f"[Might not be accurate cuz of asynchronization]")
 
 
 def sync_github_profiles_to_ck(os_conn_info, ck_conn_info, github_profile_table_template):

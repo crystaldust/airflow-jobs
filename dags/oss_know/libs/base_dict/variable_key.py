@@ -20,6 +20,12 @@ DAILY_SYNC_CLICKHOUSE_GITHUB_COMMITS_INCLUDES = "daily_sync_clickhouse_github_co
 DAILY_SYNC_CLICKHOUSE_GITHUB_PRS_INCLUDES = "daily_sync_clickhouse_github_prs_includes"
 DAILY_SYNC_CLICKHOUSE_GITHUB_ISSUES_INCLUDES = "daily_sync_clickhouse_github_issues_includes"
 
+SYNC_OPENSEARCH_INCLUDES = "sync_opensearch_includes"
+SYNC_OPENSEARCH_GITS_INCLUDES = "sync_opensearch_gits_includes"
+SYNC_OPENSEARCH_GITHUB_COMMITS_INCLUDES = "sync_opensearch_github_commits_includes"
+SYNC_OPENSEARCH_GITHUB_PRS_INCLUDES = "sync_opensearch_github_prs_includes"
+SYNC_OPENSEARCH_GITHUB_ISSUES_INCLUDES = "sync_opensearch_github_issues_includes"
+
 POSTGRES_CONN_INFO = "postgres_conn_info"
 NEED_INIT_GITHUB_ISSUES_COMMENT_REACTION_REPOS = "need_init_github_issues_comments_reactions"
 NEED_INIT_GITHUB_COMMITS_REPOS = "need_init_github_commits_repos"
@@ -44,6 +50,7 @@ GITS_PROXY_CONFIG = "gits_proxy_config"
 
 CLICKHOUSE_DRIVER_INFO = "clickhouse_conn_data"
 SYNC_FROM_CLICKHOUSE_DRIVER_INFO = "sync_from_clickhouse_conn_data"
+SYNC_FROM_OPENSEARCH_CONN_INFO = "sync_from_opensearch_conn_info"
 CK_TABLE_MAP_FROM_OS_INDEX = "ck_table_map_from_os_index"
 CK_TABLE_SYNC_MAP_FROM_OS_INDEX = "ck_table_sync_map_from_os_index"
 CK_CREATE_TABLE_COLS_DATATYPE_TPLT = "ck_create_table_cols_datatype_tplt"
@@ -63,7 +70,7 @@ REPO_LIST = "repo_list"
 SYNC_REPO_LIST = "sync_repo_list"
 MAILLIST_REPO = "maillist_repo"
 
-# Variables for sync
+# Variables for clickhouse sync
 # Interval to sync clickhouse data from other environments
 CLICKHOUSE_SYNC_INTERVAL = "clickhouse_sync_interval"
 # Clickhouse sync combination type
@@ -75,6 +82,12 @@ CLICKHOUSE_SYNC_INTERVAL = "clickhouse_sync_interval"
 # diff_local: local owner repos - remote owner repos
 # diff_remote: remote owner repos - local owner repos
 CLICKHOUSE_SYNC_COMBINATION_TYPE = "clickhouse_sync_combination_type"
+
+# Variables for clickhouse sync
+# Interval to sync clickhouse data from other environments
+OPENSEARCH_SYNC_INTERVAL = "opensearch_sync_interval"
+# Combination type, the same with clickhouse combination type
+OPENSEARCH_SYNC_COMBINATION_TYPE = "opensearch_sync_combination_type"
 
 # Interval to sync gits, github related data for all owner/repos
 # in opensearch and then transfer the sync-ed part to clickhouse

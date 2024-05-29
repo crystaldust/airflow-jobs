@@ -2,14 +2,13 @@ import copy
 import datetime
 import json
 import random
-import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Tuple
 
+import clickhouse_driver
 import dateutil
 import opensearchpy
-import psycopg2
 import requests
 import urllib3
 from opensearchpy import helpers as opensearch_helpers
@@ -20,10 +19,103 @@ from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_GITHUB_COM
     OPENSEARCH_INDEX_GITHUB_ISSUES_TIMELINE, OPENSEARCH_INDEX_GITHUB_ISSUES_COMMENTS, \
     OPENSEARCH_INDEX_CHECK_SYNC_DATA, OPENSEARCH_INDEX_GITHUB_PROFILE, OPENSEARCH_INDEX_GITHUB_PULL_REQUESTS, \
     OPENSEARCH_GIT_RAW, OPENSEARCH_INDEX_GITHUB_RELEASES
-from oss_know.libs.util.airflow import get_postgres_conn
-from oss_know.libs.util.base import infer_country_company_geo_insert_into_profile, inferrers, now_timestamp
+# from oss_know.libs.util.airflow import get_postgres_conn
+from oss_know.libs.util.base import infer_country_company_geo_insert_into_profile, inferrers, now_timestamp, \
+    get_opensearch_client
 from oss_know.libs.util.github_api import GithubAPI
 from oss_know.libs.util.log import logger
+
+
+def owner_repo_query_body(owner, repo):
+    return {
+        "query": {
+            "bool": {
+                "must": [
+                    {"term": {
+                        "search_key.owner.keyword": {
+                            "value": owner
+                        }
+                    }
+                    },
+                    {"term": {
+                        "search_key.repo.keyword": {
+                            "value": repo
+                        }
+                    }
+                    }
+                ]
+            }
+        }
+    }
+
+
+class OpenSearchBatchSyncer:
+    def __init__(self, from_client, to_client, owner, repo, batch_size=1000, index=None):
+        self.from_client = from_client
+        self.to_client = to_client
+        self.owner = owner
+        self.repo = repo
+        self.index = index
+        self.num_inserted = 0
+        self.batch_size = batch_size
+        self.batch = []
+
+        query_body = owner_repo_query_body(owner, repo)
+        query_body['sort'] = [
+            {
+                "search_key.updated_at": {
+                    "order": "desc"
+                }
+            }
+        ]
+        query_body['size'] = 1
+
+        latest_updated_at = to_client.search(query_body, index)
+        hits = latest_updated_at['hits']['hits']
+        filter_condition = 0 if not hits else hits[0]['_source']['search_key']['updated_at']
+
+        # TODO Not 100% percent sure if updated_at is globally uniq across indices
+        #  but it seems like that opensearch will remove the duplicated docs with same _id
+        #  so theoretically 'gte' here should work better than 'gt', while the side effect is that num insertions
+        #  might be larger than real(the equals are inserted and record multiple times)
+        # TODO
+        #  Finally, 'gt' is still used for the insertion comparison, considering the misleading log produced by 'gte'
+        #  if 'gt' is proven to miss docs, then replace it with 'gte'
+        self.remote_query_body = owner_repo_query_body(owner, repo)
+        self.remote_query_body['query']['bool']['must'].append({
+            "range": {
+                "search_key.updated_at": {
+                    "gt": filter_condition,
+                }
+            }
+        })
+        logger.info(f'remote query body of {owner}/{repo} {index}: {self.remote_query_body}')
+
+    def insert_batch(self):
+        num_success = len(self.batch)
+        try:
+            num_success, _ = opensearch_helpers.bulk(self.to_client, self.batch, max_retries=3)
+        except opensearch_helpers.BulkIndexError as e:
+            logger.error(f'Failed to bulk batch into local os: {e}')
+        self.num_inserted += num_success
+        index_str = self.index if self.index else 'all indices'
+        logger.info(f'{self.owner}/{self.repo}, {self.num_inserted} records inserted into {index_str}')
+        self.batch.clear()
+
+    def start(self):
+        kwargs = {} if not self.index else {'index': self.index}
+        for item in opensearch_helpers.scan(self.from_client, self.remote_query_body,
+                                            scroll='1m', request_timeout=180, **kwargs):
+            self.batch.append(item)
+            if len(self.batch) >= self.batch_size:
+                self.insert_batch()
+
+        # Handle the possibly remaining items:
+        if self.batch:
+            self.insert_batch()
+
+        index_str = self.index if self.index else 'all indices'
+        logger.info(f'Finally, {self.owner}/{self.repo}, {self.num_inserted} records inserted into {index_str}')
 
 
 class OpenSearchAPIException(Exception):
@@ -534,35 +626,35 @@ class OpensearchAPI:
 
     # -----------------------------------------
 
-    def do_opensearch_bulk_error_callback(retry_state):
-        postgres_conn = get_postgres_conn()
-        sql = '''INSERT INTO retry_data(
-                    owner, repo, type, data)
-                    VALUES (%s, %s, %s, %s);'''
-        try:
-            cur = postgres_conn.cursor()
-            owner = retry_state.args[2]
-            repo = retry_state.args[3]
-            for bulk_item in retry_state.args[1]:
-                cur.execute(sql, (owner, repo, 'opensearch_bulk', json.dumps(bulk_item)))
-            postgres_conn.commit()
-            cur.close()
-        except (psycopg2.DatabaseError) as error:
-            logger.error(f"psycopg2.DatabaseError:{error}")
-            logger.error(f"retry_state.args:{retry_state.args}")
-        except (TypeError) as error:
-            logger.error(f"TypeError:{error}")
-            logger.error(f"retry_state.args:{retry_state.args}")
-        finally:
-            if postgres_conn is not None:
-                postgres_conn.close()
-
-        return retry_state.outcome.result()
+    # def do_opensearch_bulk_error_callback(retry_state):
+    #     postgres_conn = get_postgres_conn()
+    #     sql = '''INSERT INTO retry_data(
+    #                 owner, repo, type, data)
+    #                 VALUES (%s, %s, %s, %s);'''
+    #     try:
+    #         cur = postgres_conn.cursor()
+    #         owner = retry_state.args[2]
+    #         repo = retry_state.args[3]
+    #         for bulk_item in retry_state.args[1]:
+    #             cur.execute(sql, (owner, repo, 'opensearch_bulk', json.dumps(bulk_item)))
+    #         postgres_conn.commit()
+    #         cur.close()
+    #     except (psycopg2.DatabaseError) as error:
+    #         logger.error(f"psycopg2.DatabaseError:{error}")
+    #         logger.error(f"retry_state.args:{retry_state.args}")
+    #     except (TypeError) as error:
+    #         logger.error(f"TypeError:{error}")
+    #         logger.error(f"retry_state.args:{retry_state.args}")
+    #     finally:
+    #         if postgres_conn is not None:
+    #             postgres_conn.close()
+    #
+    #     return retry_state.outcome.result()
 
     # retry 防止OpenSearchException
     @retry(stop=stop_after_attempt(3),
            wait=wait_fixed(1),
-           retry_error_callback=do_opensearch_bulk_error_callback,
+           # retry_error_callback=do_opensearch_bulk_error_callback,
            retry=(retry_if_exception_type(OSError) |
                   retry_if_exception_type(urllib3.exceptions.HTTPError) |
                   retry_if_exception_type(opensearchpy.exceptions.ConnectionTimeout) |
@@ -630,54 +722,143 @@ class OpensearchAPI:
 
         return uniq_owner_repos
 
-    def sync_delete(self, opensearch_client, index, search_body, retries=20, interval=0.5):
-        opensearch_client.delete_by_query(index, search_body)
-        logger.debug(f"Deleting sync with search body: {search_body}")
-
-        for i in range(retries):
-            sleep(interval)
-            res = opensearch_client.search(index=index, body=search_body)
-            if res['hits']['total']['value'] == 0:
-                break
-
-    # Get the latest update_timestamp from check_sync_data
-    def get_checkpoint(self, opensearch_client, index_type, owner, repo):
-        query_body = {
-            "size": 1,
-            "query": {
-                "bool": {
-                    "must": [
-                        {
-                            "term": {
-                                "search_key.type.keyword": {
-                                    "value": index_type
-                                }
-                            }
-                        },
-                        {
-                            "term": {
-                                "search_key.owner.keyword": {
-                                    "value": owner
-                                }
-                            }
-                        },
-                        {
-                            "term": {
-                                "search_key.repo.keyword": {
-                                    "value": repo
-                                }
+    def get_uniq_owner_repos_set(self, opensearch_client, index, excludes=None):
+        aggregation_body = {
+            "aggs": {
+                "uniq_owners": {
+                    "terms": {
+                        "field": "search_key.owner.keyword",
+                        "size": 1000
+                    },
+                    "aggs": {
+                        "uniq_repos": {
+                            "terms": {
+                                "field": "search_key.repo.keyword",
+                                "size": 500
                             }
                         }
-                    ]
-                }
-            },
-            "sort": [
-                {
-                    "search_key.update_timestamp": {
-                        "order": "desc"
                     }
                 }
-            ]
+            }
         }
 
-        return opensearch_client.search(index=OPENSEARCH_INDEX_CHECK_SYNC_DATA, body=query_body)
+        if index == OPENSEARCH_GIT_RAW:
+            aggregation_body['aggs']['uniq_owners']['aggs']['uniq_repos']['aggs'] = {
+                "uniq_origin": {
+                    "terms": {
+                        "field": "search_key.origin.keyword",
+                        "size": 10
+                    }
+                }
+            }
+        kwargs = {'index': index} if index else {}
+        result = opensearch_client.search(body=aggregation_body, **kwargs)
+
+        uniq_owner_repos = set()  # A list of tuple of (owner, repo)
+        uniq_owners = result['aggregations']['uniq_owners']['buckets']
+        for uniq_owner in uniq_owners:
+            owner_name = uniq_owner['key']
+            uniq_repos = uniq_owner['uniq_repos']['buckets']
+            for uniq_repo in uniq_repos:
+                repo_name = uniq_repo['key']
+                uniq_owner_repos.add((owner_name, repo_name))
+        return uniq_owner_repos
+
+    def combine_remote_owner_repos(self, local_os_conn_info, remote_os_conn_info, index_name=None,
+                                   combination_type='diff_remote'):
+        local_client = get_opensearch_client(local_os_conn_info)
+        remote_client = get_opensearch_client(remote_os_conn_info)
+
+        remote_repos = self.get_uniq_owner_repos_set(remote_client, index_name)
+        if combination_type == 'remote_only':
+            return remote_repos
+
+        local_repos = self.get_uniq_owner_repos_set(local_client, index_name)
+        owner_repos = None
+        if combination_type == 'intersection':
+            owner_repos = local_repos.intersection(remote_repos)
+        elif combination_type == 'diff_remote':
+            owner_repos = remote_repos.difference(local_repos)
+        else:
+            raise ValueError(f"Invalid combination_type: {combination_type}")
+
+        return owner_repos
+
+    def sync_from_remote_by_repos(self, local_os_conn_info, remote_os_conn_info, owner_repos, index=None):
+        failed_owner_repos = []
+        failure_info = {}  # Key: err.code, value: err.message
+        for owner_repo_pair in owner_repos:
+            owner, repo = owner_repo_pair
+            try:
+                self.sync_from_remote_by_repo(local_os_conn_info, remote_os_conn_info, owner, repo, index=index)
+            #     todo replace the exception with opensearch errors
+            except clickhouse_driver.errors.ServerException as e:
+                logger.error(f"Failed to sync {owner}/{repo}: {e.code}")
+                if e.code not in failure_info:
+                    failure_info[e.code] = e.message
+                failed_owner_repos.append((owner, repo, e.code))
+
+        if failed_owner_repos:
+            logger.error(f"Failure messages: {json.dumps(failure_info, indent=2)}")
+            raise Exception(f"Failed to sync {len(failed_owner_repos)} repos: {failed_owner_repos}")
+
+    def sync_from_remote_by_repo(self, local_os_conn_info, remote_os_conn_info, owner, repo, index=None):
+        local_os_client = get_opensearch_client(local_os_conn_info)
+        remote_os_client = get_opensearch_client(remote_os_conn_info)
+        syncer = OpenSearchBatchSyncer(remote_os_client, local_os_client, owner, repo, index=index)
+        syncer.start()
+
+
+def sync_delete(self, opensearch_client, index, search_body, retries=20, interval=0.5):
+    opensearch_client.delete_by_query(index, search_body)
+    logger.debug(f"Deleting sync with search body: {search_body}")
+
+    for i in range(retries):
+        sleep(interval)
+        res = opensearch_client.search(index=index, body=search_body)
+        if res['hits']['total']['value'] == 0:
+            break
+
+    # Get the latest update_timestamp from check_sync_data
+
+
+def get_checkpoint(self, opensearch_client, index_type, owner, repo):
+    query_body = {
+        "size": 1,
+        "query": {
+            "bool": {
+                "must": [
+                    {
+                        "term": {
+                            "search_key.type.keyword": {
+                                "value": index_type
+                            }
+                        }
+                    },
+                    {
+                        "term": {
+                            "search_key.owner.keyword": {
+                                "value": owner
+                            }
+                        }
+                    },
+                    {
+                        "term": {
+                            "search_key.repo.keyword": {
+                                "value": repo
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        "sort": [
+            {
+                "search_key.update_timestamp": {
+                    "order": "desc"
+                }
+            }
+        ]
+    }
+
+    return opensearch_client.search(index=OPENSEARCH_INDEX_CHECK_SYNC_DATA, body=query_body)
