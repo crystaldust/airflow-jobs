@@ -25,6 +25,8 @@ SYNC_OPENSEARCH_GITS_INCLUDES = "sync_opensearch_gits_includes"
 SYNC_OPENSEARCH_GITHUB_COMMITS_INCLUDES = "sync_opensearch_github_commits_includes"
 SYNC_OPENSEARCH_GITHUB_PRS_INCLUDES = "sync_opensearch_github_prs_includes"
 SYNC_OPENSEARCH_GITHUB_ISSUES_INCLUDES = "sync_opensearch_github_issues_includes"
+SYNC_OPENSEARCH_GITHUB_ISSUES_COMMENTS_INCLUDES = "sync_opensearch_github_issues_comments_includes"
+SYNC_OPENSEARCH_GITHUB_ISSUES_TIMELINE_INCLUDES = "sync_opensearch_github_issues_timeline_includes"
 
 POSTGRES_CONN_INFO = "postgres_conn_info"
 NEED_INIT_GITHUB_ISSUES_COMMENT_REACTION_REPOS = "need_init_github_issues_comments_reactions"
