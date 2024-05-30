@@ -21,7 +21,8 @@ opensearch_api = OpensearchAPI()
 all_owner_repos = Variable.get(SYNC_OPENSEARCH_GITS_INCLUDES, deserialize_json=True, default_var=None)
 if not all_owner_repos:
     all_owner_repos = opensearch_api.combine_remote_owner_repos(opensearch_conn_info, remote_opensearch_conn_info,
-                                                                OPENSEARCH_GIT_RAW)
+                                                                index_name=OPENSEARCH_GIT_RAW,
+                                                                combination_type=sync_combination_type)
 
 # Daily sync gits data from other clickhouse environment by owner/repo
 with DAG(dag_id='gits_sync_from_opensearch',  # schedule_interval='*/5 * * * *',
