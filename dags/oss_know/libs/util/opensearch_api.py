@@ -728,13 +728,13 @@ class OpensearchAPI:
                 "uniq_owners": {
                     "terms": {
                         "field": "search_key.owner.keyword",
-                        "size": 1000
+                        "size": 25000
                     },
                     "aggs": {
                         "uniq_repos": {
                             "terms": {
                                 "field": "search_key.repo.keyword",
-                                "size": 500
+                                "size": 50
                             }
                         }
                     }
@@ -742,15 +742,6 @@ class OpensearchAPI:
             }
         }
 
-        if index == OPENSEARCH_GIT_RAW:
-            aggregation_body['aggs']['uniq_owners']['aggs']['uniq_repos']['aggs'] = {
-                "uniq_origin": {
-                    "terms": {
-                        "field": "search_key.origin.keyword",
-                        "size": 10
-                    }
-                }
-            }
         kwargs = {'index': index} if index else {}
         result = opensearch_client.search(body=aggregation_body, **kwargs)
 
