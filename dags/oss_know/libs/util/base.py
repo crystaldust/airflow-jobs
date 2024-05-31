@@ -380,6 +380,17 @@ def arrange_owner_repo_into_letter_groups(owner_repos):
     return groups
 
 
+def arrange_owners_into_letter_groups(owners):
+    groups = {'other': []}
+    for letter in ascii_lowercase:
+        groups[letter] = []
+    for owner in owners:
+        capital_letter = owner[0].lower()
+        key = capital_letter if capital_letter in groups else 'other'
+        groups[key].append(owner)
+    return groups
+
+
 def unify_gits_origin(origin):
     # TODO For python 3.9, there is a new string method removesuffix
     # The code below works for 3.8 or lower

@@ -722,8 +722,9 @@ class OpensearchAPI:
 
         return uniq_owner_repos
 
-    def get_uniq_owner_repos_set(self, opensearch_client, index, excludes=None):
+    def get_uniq_owner_repos_set(self, opensearch_client, index=None, excludes=None):
         aggregation_body = {
+            "size": 0,
             "aggs": {
                 "uniq_owners": {
                     "terms": {
@@ -755,6 +756,27 @@ class OpensearchAPI:
                 uniq_owner_repos.add((owner_name, repo_name))
         return uniq_owner_repos
 
+    def get_uniq_owners(self, opensearch_client, index=None, owners_aggs_size=25000):
+        aggregation_body = {
+            "aggs": {
+                "uniq_owners": {
+                    "terms": {
+                        "field": "search_key.owner.keyword",
+                        "size": owners_aggs_size
+                    }
+                }
+            }
+        }
+
+        kwargs = {'index': index} if index else {}
+        result = opensearch_client.search(body=aggregation_body, **kwargs)
+
+        uniq_owners = []  # A list of tuple of (owner, repo)
+        for uniq_owner in result['aggregations']['uniq_owners']['buckets']:
+            owner_name = uniq_owner['key']
+            uniq_owners.append(owner_name)
+        return uniq_owners
+
     def combine_remote_owner_repos(self, local_os_conn_info, remote_os_conn_info, index_name=None,
                                    combination_type='diff_remote'):
         local_client = get_opensearch_client(local_os_conn_info)
@@ -778,10 +800,13 @@ class OpensearchAPI:
     def sync_from_remote_by_repos(self, local_os_conn_info, remote_os_conn_info, owner_repos, index=None):
         failed_owner_repos = []
         failure_info = {}  # Key: err.code, value: err.message
+        local_os_client = get_opensearch_client(local_os_conn_info)
+        remote_os_client = get_opensearch_client(remote_os_conn_info)
+
         for owner_repo_pair in owner_repos:
             owner, repo = owner_repo_pair
             try:
-                self.sync_from_remote_by_repo(local_os_conn_info, remote_os_conn_info, owner, repo, index=index)
+                self.sync_from_remote_by_repo(local_os_client, remote_os_client, owner, repo, index=index)
             #     todo replace the exception with opensearch errors
             except clickhouse_driver.errors.ServerException as e:
                 logger.error(f"Failed to sync {owner}/{repo}: {e.code}")
@@ -793,9 +818,64 @@ class OpensearchAPI:
             logger.error(f"Failure messages: {json.dumps(failure_info, indent=2)}")
             raise Exception(f"Failed to sync {len(failed_owner_repos)} repos: {failed_owner_repos}")
 
-    def sync_from_remote_by_repo(self, local_os_conn_info, remote_os_conn_info, owner, repo, index=None):
+    def sync_from_remote_by_owners(self, local_os_conn_info, remote_os_conn_info, owners, index=None,
+                                   combination_type='diff_remote'):
         local_os_client = get_opensearch_client(local_os_conn_info)
         remote_os_client = get_opensearch_client(remote_os_conn_info)
+        for owner in owners:
+            self.sync_from_remote_by_owner(local_os_client, remote_os_client, owner, index, combination_type)
+
+    def sync_from_remote_by_owner(self, local_os_client, remote_os_client, owner,
+                                  index=None, combination_type='diff_remote'):
+        repos = self.combine_repos_of_owner(local_os_client, remote_os_client, owner, index, combination_type)
+        if repos:
+            index_str = f'index {index}' if index else 'all indices'
+            logger.info(f'Owner {owner} on {index_str} got {len(repos)} repos to sync: {repos}')
+        for repo in repos:
+            self.sync_from_remote_by_repo(local_os_client, remote_os_client, owner, repo, index)
+
+    def combine_repos_of_owner(self, local_os_client, remote_os_client, owner,
+                               index=None, combination_type='diff_remote'):
+        remote_repos = self.get_repos_of_owner(remote_os_client, owner, index)
+        if combination_type == 'remote_only':
+            return remote_repos
+
+        local_repos = self.get_repos_of_owner(local_os_client, owner)
+        repos = None
+        if combination_type == 'diff_remote':
+            repos = remote_repos.difference(local_repos)
+        elif combination_type == 'intersection':
+            repos = remote_repos.intersection(local_repos)
+        else:
+            raise (ValueError(f'Unexpected combination type:{combination_type}'))
+
+        return repos
+
+    def get_repos_of_owner(self, os_client, owner, index=None, aggs_size=100):
+        query_body = {
+            "size": 0,
+            "query": {
+                "match": {
+                    "search_key.owner.keyword": f"{owner}"
+                }
+            },
+            "aggs": {
+                "uniq_repos": {
+                    "terms": {
+                        "field": "search_key.repo.keyword",
+                        "size": aggs_size
+                    }
+                }
+            }
+        }
+        kwargs = {'index': index} if index else {}
+        result = os_client.search(query_body, **kwargs)
+        repos = set()
+        for repo_info in result['aggregations']['uniq_repos']['buckets']:
+            repos.add(repo_info['key'])
+        return repos
+
+    def sync_from_remote_by_repo(self, local_os_client, remote_os_client, owner, repo, index=None):
         syncer = OpenSearchBatchSyncer(remote_os_client, local_os_client, owner, repo, index=index)
         syncer.start()
 
