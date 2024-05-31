@@ -85,8 +85,8 @@ CLICKHOUSE_SYNC_INTERVAL = "clickhouse_sync_interval"
 # diff_remote: remote owner repos - local owner repos
 CLICKHOUSE_SYNC_COMBINATION_TYPE = "clickhouse_sync_combination_type"
 
-# Variables for clickhouse sync
-# Interval to sync clickhouse data from other environments
+# Variables for opensearch sync
+# Interval to sync opensearch data from other environments
 OPENSEARCH_SYNC_INTERVAL = "opensearch_sync_interval"
 # Combination type, the same with clickhouse combination type
 OPENSEARCH_SYNC_COMBINATION_TYPE = "opensearch_sync_combination_type"
