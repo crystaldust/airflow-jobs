@@ -9,7 +9,7 @@ from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_GIT_RAW
 from oss_know.libs.base_dict.variable_key import DAILY_SYNC_GITS_EXCLUDES, DAILY_SYNC_GITS_INCLUDES, \
     CK_TABLE_DEFAULT_VAL_TPLT, OPENSEARCH_CONN_DATA, CLICKHOUSE_DRIVER_INFO, GIT_SAVE_LOCAL_PATH, \
     DAILY_GITS_SYNC_INTERVAL, DAILY_SYNC_INTERVAL
-from oss_know.libs.github.sync_gits import sync_gits_opensearch
+from oss_know.libs.github.sync_gits import sync_gits_opensearch_repo
 from oss_know.libs.util.base import get_opensearch_client, arrange_owner_repo_into_letter_groups
 from oss_know.libs.util.opensearch_api import OpensearchAPI
 
@@ -39,8 +39,9 @@ with DAG(dag_id='daily_gits_sync',  # schedule_interval='*/5 * * * *',
             owner = item['owner']
             repo = item['repo']
             url = item['origin']
-            sync_gits_opensearch(url, owner=owner, repo=repo, proxy_config=proxy_config,
-                                 opensearch_conn_datas=opensearch_conn_info, git_save_local_path=git_save_local_path)
+            sync_gits_opensearch_repo(url, owner=owner, repo=repo, proxy_config=proxy_config,
+                                      opensearch_conn_datas=opensearch_conn_info,
+                                      git_save_local_path=git_save_local_path)
         return 'do_sync_gits:::end'
 
 
