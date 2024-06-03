@@ -15,7 +15,7 @@ def timestamp_to_utc(timestamp):
     return datetime.datetime.utcfromtimestamp(int(timestamp)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def sync_gits_opensearch(git_url, owner, repo, proxy_config, opensearch_conn_datas, git_save_local_path=None):
+def sync_gits_opensearch_repo(git_url, owner, repo, proxy_config, opensearch_conn_datas, git_save_local_path=None):
     repo_path = f'{git_save_local_path["PATH"]}/{owner}/{repo}'
     check_point_timestamp = int(datetime.datetime.now().timestamp() * 1000)
 
@@ -119,6 +119,43 @@ def sync_gits_opensearch(git_url, owner, repo, proxy_config, opensearch_conn_dat
 
     # Keep track of the current latest remote, making it more likely to get the merge base for next sync
     git_repo.git.reset('--hard', f'origin/{active_branch_name}')
+
+
+def sync_gits_opensearch_of_owner(opensearch_conn_info, owner,
+                                  repo_aggs_size=3000, proxy_config=None, git_save_local_path=None):
+    opensearch_client = get_opensearch_client(opensearch_conn_info)
+    query_body = {
+        "query": {
+            "match": {
+                "search_key.owner.keyword": owner
+            }
+        },
+        "aggs": {
+            "uniq_origins": {
+                "terms": {
+                    "field": "search_key.origin.keyword",
+                    "size": repo_aggs_size
+                }
+            }
+        },
+        "size": 0
+    }
+
+    result = opensearch_client.search(query_body, OPENSEARCH_GIT_RAW)
+    synced_owner_repos = []
+
+    for origin_info in result['aggregations']['uniq_origins']['buckets']:
+        origin = origin_info['key']
+        if origin.endswith('.git'):
+            origin = origin[:-4]
+        repo = origin.split(owner)[-1].lstrip('/')
+        sync_gits_opensearch_repo(origin, owner, repo, proxy_config, opensearch_conn_info, git_save_local_path)
+        synced_owner_repos.append({
+            'owner': owner,
+            'repo': repo,
+            'origin': origin
+        })
+    return synced_owner_repos
 
 
 def create_commit_doc(owner, repo, git_repo, sha, check_point_timestamp):
