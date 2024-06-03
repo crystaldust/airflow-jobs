@@ -5,13 +5,13 @@ from airflow.models import Variable
 from airflow.operators.python import PythonOperator
 
 from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_GITHUB_PULL_REQUESTS
-from oss_know.libs.base_dict.variable_key import CLICKHOUSE_SYNC_INTERVAL, OPENSEARCH_SYNC_COMBINATION_TYPE, \
+from oss_know.libs.base_dict.variable_key import OPENSEARCH_SYNC_INTERVAL, OPENSEARCH_SYNC_COMBINATION_TYPE, \
     SYNC_FROM_OPENSEARCH_CONN_INFO, OPENSEARCH_CONN_DATA, SYNC_OPENSEARCH_GITHUB_PRS_INCLUDES
 from oss_know.libs.util.base import arrange_owner_repo_into_letter_groups
 from oss_know.libs.util.opensearch_api import OpensearchAPI
 
 sync_from_opensearch_conn_info = Variable.get(SYNC_FROM_OPENSEARCH_CONN_INFO, deserialize_json=True)
-sync_interval = Variable.get(CLICKHOUSE_SYNC_INTERVAL, default_var=None)
+sync_interval = Variable.get(OPENSEARCH_SYNC_INTERVAL, default_var=None)
 sync_combination_type = Variable.get(OPENSEARCH_SYNC_COMBINATION_TYPE, default_var="diff_remote")
 
 opensearch_conn_info = Variable.get(OPENSEARCH_CONN_DATA, deserialize_json=True)
@@ -24,7 +24,7 @@ if not all_owner_repos:
                                                                 index_name=OPENSEARCH_INDEX_GITHUB_PULL_REQUESTS,
                                                                 combination_type=sync_combination_type)
 
-# Daily sync gits data from other clickhouse environment by owner/repo
+# Daily sync gits data from other opensearch environment by owner/repo
 with DAG(dag_id='github_prs_sync_from_opensearch',  # schedule_interval='*/5 * * * *',
          schedule_interval=sync_interval, start_date=datetime(2021, 1, 1), catchup=False,
          tags=['github', 'sync opensearch'], ) as dag:
