@@ -52,7 +52,7 @@ def sync_github_commits_opensearch(opensearch_conn_info,
             '%Y-%m-%dT00:00:00Z')
 
     # 生成本次同步的时间范围：同步到今天的 00:00:00
-    until = datetime.datetime.now().strftime('%Y-%m-%dT00:00:00Z')
+    until = datetime.datetime.utcnow().strftime('%Y-%m-%dT00:00:00Z')
     if not since:
         logger.info(f'Latest github commit date of {owner}/{repo} not found, sync from scratch until {until}')
     else:

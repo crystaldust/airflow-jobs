@@ -26,13 +26,6 @@ if not sync_interval:
 with DAG(dag_id='daily_github_commits_sync',  # schedule_interval='*/5 * * * *',
          schedule_interval=sync_interval, start_date=datetime(2021, 1, 1), catchup=False,
          tags=['github', 'daily sync']) as dag:
-    def op_init_daily_github_commits_sync():
-        return 'Start init_daily_github_commits_sync'
-
-
-    op_init_daily_github_commits_sync = PythonOperator(task_id='op_init_daily_github_commits_sync',
-                                                       python_callable=op_init_daily_github_commits_sync)
-
     opensearch_conn_info = Variable.get(OPENSEARCH_CONN_DATA, deserialize_json=True)
 
     github_tokens = Variable.get(GITHUB_TOKENS, deserialize_json=True)
@@ -83,5 +76,5 @@ with DAG(dag_id='daily_github_commits_sync',  # schedule_interval='*/5 * * * *',
                 "owner_repo_group": owner_repos
             }
         )
-        op_init_daily_github_commits_sync >> op_sync_github_commits_opensearch >> op_sync_github_commits_clickhouse
+        op_sync_github_commits_opensearch >> op_sync_github_commits_clickhouse
         # prev_op = op_sync_github_commits_clickhouse_group
