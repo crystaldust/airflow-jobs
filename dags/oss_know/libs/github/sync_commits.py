@@ -5,7 +5,7 @@ import time
 import requests
 from opensearchpy import OpenSearch
 
-from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_GITHUB_COMMITS, OPENSEARCH_INDEX_CHECK_SYNC_DATA
+from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_GITHUB_COMMITS
 from oss_know.libs.base_dict.options import GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX
 from oss_know.libs.util.github_api import GithubAPI
 from oss_know.libs.util.log import logger
@@ -43,9 +43,9 @@ def sync_github_commits_opensearch(opensearch_conn_info,
         # Try to get the latest commit date(committed_date field) from existing github_commits index
         # And make it the latest checkpoint
         latest_commit_date_str = get_latest_commit_date_str(opensearch_client, owner, repo)
-        if not latest_commit_date_str:
-            raise SyncGithubCommitException(f"没有得到上次github commits {owner}/{repo} 同步的时间")
-        since = datetime.datetime.strptime(latest_commit_date_str, '%Y-%m-%dT%H:%M:%SZ').strftime('%Y-%m-%dT00:00:00Z')
+        if latest_commit_date_str:
+            since = datetime.datetime.strptime(latest_commit_date_str, '%Y-%m-%dT%H:%M:%SZ').strftime(
+                '%Y-%m-%dT00:00:00Z')
     else:
         github_commits_check = commit_checkpoint["hits"]["hits"][0]["_source"]["github"]["commits"]
         since = datetime.datetime.fromtimestamp(github_commits_check["sync_until_timestamp"]).strftime(
@@ -53,7 +53,10 @@ def sync_github_commits_opensearch(opensearch_conn_info,
 
     # 生成本次同步的时间范围：同步到今天的 00:00:00
     until = datetime.datetime.now().strftime('%Y-%m-%dT00:00:00Z')
-    logger.info(f'Sync github commits {owner}/{repo} since：{since}，sync until：{until}')
+    if not since:
+        logger.info(f'Latest github commit date of {owner}/{repo} not found, sync from scratch until {until}')
+    else:
+        logger.info(f'Sync github commits {owner}/{repo} since {since}, until {until}')
 
     session = requests.Session()
     github_api = GithubAPI()
@@ -79,8 +82,6 @@ def sync_github_commits_opensearch(opensearch_conn_info,
         logger.info(f"success get github commits :: {owner}/{repo} page_index:{page}")
 
     opensearch_api.set_sync_github_commits_check(opensearch_client, owner, repo, since, until)
-
-    return "END::sync_github_commits"
 
 
 def get_latest_commit_date_str(opensearch_client, owner, repo):
