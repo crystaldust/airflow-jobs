@@ -483,7 +483,7 @@ class OpensearchAPI:
                     "owner": owner,
                     "repo": repo,
                     "sync_timestamp": now_time.timestamp(),
-                    "sync_since_timestamp": dateutil.parser.parse(since).timestamp(),
+                    "sync_since_timestamp": dateutil.parser.parse(since).timestamp() if since else 0,
                     "sync_until_timestamp": dateutil.parser.parse(until).timestamp(),
                     "sync_since_datetime": since,
                     "sync_until_datetime": until
