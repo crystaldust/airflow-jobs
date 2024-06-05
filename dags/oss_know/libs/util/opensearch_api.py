@@ -133,17 +133,30 @@ class OpensearchAPI:
     def bulk_github_commits(self, opensearch_client, github_commits, owner, repo, if_sync) -> Tuple[int, int]:
         bulk_all_github_commits = []
         for now_commit in github_commits:
-            has_commit = opensearch_client.search(index=OPENSEARCH_INDEX_GITHUB_COMMITS,
-                                                  body={
-                                                      "query": {
-                                                          "term": {
-                                                              "raw_data.sha.keyword": {
-                                                                  "value": now_commit["sha"]
-                                                              }
-                                                          }
-                                                      }
-                                                  }
-                                                  )
+            query_body = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "match": {
+                                    "search_key.owner.keyword": owner
+                                }
+                            },
+                            {
+                                "match": {
+                                    "search_key.repo.keyword": repo
+                                }
+                            },
+                            {
+                                "match": {
+                                    "raw_data.sha.keyword": now_commit["sha"]
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+            has_commit = opensearch_client.search(index=OPENSEARCH_INDEX_GITHUB_COMMITS, body=query_body)
             if len(has_commit["hits"]["hits"]) == 0:
                 template = {
                     "_index": OPENSEARCH_INDEX_GITHUB_COMMITS,

@@ -50,7 +50,6 @@ def sync_github_commits_opensearch(opensearch_conn_info,
         github_commits_check = commit_checkpoint["hits"]["hits"][0]["_source"]["github"]["commits"]
         since = datetime.datetime.fromtimestamp(github_commits_check["sync_until_timestamp"]).strftime(
             '%Y-%m-%dT00:00:00Z')
-
     # 生成本次同步的时间范围：同步到今天的 00:00:00
     until = datetime.datetime.utcnow().strftime('%Y-%m-%dT00:00:00Z')
     if not since:
@@ -60,7 +59,8 @@ def sync_github_commits_opensearch(opensearch_conn_info,
 
     session = requests.Session()
     github_api = GithubAPI()
-    for page in range(1, 999999):
+    page = 1
+    while True:
         time.sleep(random.uniform(GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX))
         req = github_api.get_github_commits(http_session=session,
                                             token_proxy_accommodator=token_proxy_accommodator,
@@ -71,15 +71,16 @@ def sync_github_commits_opensearch(opensearch_conn_info,
                                             until=until)
         now_github_commits = req.json()
 
-        if (now_github_commits is not None) and len(now_github_commits) == 0:
-            logger.info(f'get github commits end to break:: {owner}/{repo} page_index:{page}')
+        if not now_github_commits:
+            logger.info(f'get github commits end to break:: {owner}/{repo} page_index: {page}')
             break
 
         opensearch_api.bulk_github_commits(opensearch_client=opensearch_client,
                                            github_commits=now_github_commits,
                                            owner=owner, repo=repo, if_sync=1)
 
-        logger.info(f"success get github commits :: {owner}/{repo} page_index:{page}")
+        logger.info(f"success get {len(now_github_commits)} github commits :: {owner}/{repo} page_index: {page}")
+        page += 1
 
     opensearch_api.set_sync_github_commits_check(opensearch_client, owner, repo, since, until)
 
