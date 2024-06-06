@@ -24,8 +24,7 @@ def sync_github_issues_comments(opensearch_conn_info,
                                 repo,
                                 token_proxy_accommodator,
                                 issues_numbers):
-    logger.info("start sync_github_issues_comments()")
-
+    logger.info(f'Sync comments of {owner}/{repo} on issues: {issues_numbers}')
     opensearch_client = OpenSearch(
         hosts=[{'host': opensearch_conn_info["HOST"], 'port': opensearch_conn_info["PORT"]}],
         http_compress=True,
@@ -73,7 +72,8 @@ def sync_github_issues_comments(opensearch_conn_info,
                                                        })
         logger.info(f"DELETE github issues {issues_number} comments result:{del_result}")
 
-        for page in range(1, 100000):
+        page = 1
+        while True:
             # Token sleep
             time.sleep(random.uniform(GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX))
 
@@ -87,7 +87,7 @@ def sync_github_issues_comments(opensearch_conn_info,
             )
             one_page_github_issues_comments = req.json()
 
-            if (one_page_github_issues_comments is not None) and len(one_page_github_issues_comments) == 0:
+            if not one_page_github_issues_comments:
                 logger.info(f"sync github issues comments end to break:{owner}/{repo} page_index:{page}")
                 break
 
@@ -96,6 +96,7 @@ def sync_github_issues_comments(opensearch_conn_info,
                                                        owner=owner, repo=repo, number=issues_number, if_sync=1)
 
             logger.info(f"success get github issues comments page:{owner}/{repo} page_index:{page}")
+            page += 1
 
     # 建立 sync 标志
     # opensearch_api.set_sync_github_issues_check(opensearch_client, owner, repo)

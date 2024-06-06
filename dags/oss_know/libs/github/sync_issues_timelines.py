@@ -1,25 +1,23 @@
 import random
+import time
 
 import requests
-import time
-import itertools
-
 from opensearchpy import OpenSearch
 
 # from .init_issues_timeline import get_github_issues_timeline
 from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_GITHUB_ISSUES_TIMELINE
+from oss_know.libs.base_dict.options import GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX
 from oss_know.libs.util.github_api import GithubAPI
 from oss_know.libs.util.log import logger
 from oss_know.libs.util.opensearch_api import OpensearchAPI
-from oss_know.libs.base_dict.options import GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX
 
 
 def sync_github_issues_timelines(opensearch_conn_info,
-                                owner,
-                                repo,
-                                token_proxy_accommodator,
-                                issues_numbers):
-
+                                 owner,
+                                 repo,
+                                 token_proxy_accommodator,
+                                 issues_numbers):
+    logger.info(f'{owner}/{repo} sync timeline of issues {issues_numbers}')
     opensearch_client = OpenSearch(
         hosts=[{'host': opensearch_conn_info["HOST"], 'port': opensearch_conn_info["PORT"]}],
         http_compress=True,
@@ -34,7 +32,6 @@ def sync_github_issues_timelines(opensearch_conn_info,
     github_api = GithubAPI()
 
     for issues_number in issues_numbers:
-
         # 同步前删除原来存在的issues_numbers对应timeline
         del_result = opensearch_client.delete_by_query(index=OPENSEARCH_INDEX_GITHUB_ISSUES_TIMELINE,
                                                        body={
@@ -68,7 +65,8 @@ def sync_github_issues_timelines(opensearch_conn_info,
                                                        })
         logger.info(f"DELETE github issues {issues_number} timeline result:{del_result}")
 
-        for page in range(1, 10000):
+        page = 1
+        while True:
             # Token sleep
             time.sleep(random.uniform(GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX))
             req = github_api.get_github_issues_timeline(
@@ -80,10 +78,8 @@ def sync_github_issues_timelines(opensearch_conn_info,
                 page=page)
             one_page_github_issues_timeline = req.json()
 
-            if (one_page_github_issues_timeline is not None) and len(
-                    one_page_github_issues_timeline) == 0:
-                logger.info(
-                    f"sync github issues timeline end to break:{owner}/{repo}/{issues_number} page_index:{page}")
+            if not one_page_github_issues_timeline:
+                logger.info(f"All github issues timeline fetched:{owner}/{repo}/{issues_number} page_index:{page}")
                 break
 
             opensearch_api.bulk_github_issues_timeline(opensearch_client=opensearch_client,
@@ -91,3 +87,4 @@ def sync_github_issues_timelines(opensearch_conn_info,
                                                        owner=owner, repo=repo, number=issues_number, if_sync=1)
 
             logger.info(f"success get github issues timeline page:{owner}/{repo}/{issues_number} page_index:{page}")
+            page += 1
