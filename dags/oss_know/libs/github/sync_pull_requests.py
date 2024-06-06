@@ -1,6 +1,6 @@
-import datetime
 import random
 import time
+from datetime import datetime, timezone
 
 import requests
 from opensearchpy import OpenSearch
@@ -25,7 +25,7 @@ def sync_github_pull_requests(opensearch_conn_info,
                               token_proxy_accommodator
                               ):
     logger.info("start Function to be renamed to sync_github_pull_requests")
-    now_time = datetime.datetime.now()
+    now_time = datetime.utcnow()
     opensearch_client = OpenSearch(
         hosts=[{'host': opensearch_conn_info["HOST"], 'port': opensearch_conn_info["PORT"]}],
         http_compress=True,
@@ -44,51 +44,62 @@ def sync_github_pull_requests(opensearch_conn_info,
         # Try to get the latest PR date(created_at field) from existing github_pull_requests index
         # And make it the latest checkpoint
         latest_pr_date = get_latest_pr_date_str(opensearch_client, owner, repo)
-        if not latest_pr_date:
-            raise SyncGithubPullRequestsException(f"没有得到上次github pull_requests {owner}/{repo} 同步的时间")
-        since = datetime.datetime.strptime(latest_pr_date, '%Y-%m-%dT%H:%M:%SZ').strftime('%Y-%m-%dT00:00:00Z')
+        if latest_pr_date:
+            since = datetime.strptime(latest_pr_date, '%Y-%m-%dT%H:%M:%SZ').astimezone(timezone.utc)
     else:
         github_pull_requests_check = pr_checkpoint["hits"]["hits"][0]["_source"]["github"]["prs"]
-        since = datetime.datetime.fromtimestamp(github_pull_requests_check["sync_timestamp"]).strftime(
-            '%Y-%m-%dT00:00:00Z')
+        since = datetime.fromtimestamp(github_pull_requests_check["sync_timestamp"], timezone.utc)
 
     # 生成本次同步的时间范围：同步到今天的 00:00:00
-    logger.info(f'Sync github pull requests {owner}/{repo} since：{since}')
+    if not since:
+        logger.info(f'Latest PR sync time of {owner}/{repo} not found, sync from scratch')
+        since = datetime.fromtimestamp(0, timezone.utc)
+    else:
+        logger.info(f'Sync github pull requests {owner}/{repo} since：{since}')
 
     pull_requests_numbers = []
     session = requests.Session()
     github_api = GithubAPI()
-    for page in range(1, 100000):
+    page = 1
+    while True:
         # Token sleep
         time.sleep(random.uniform(GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX))
-
+        # The PRs are globally sorted by updated_at desc, so just get all the PRs updated after since, then insert them
+        # into Opensearch
         req = github_api.get_github_pull_requests(http_session=session,
                                                   token_proxy_accommodator=token_proxy_accommodator,
                                                   owner=owner,
                                                   repo=repo,
                                                   page=page)
 
-        one_page_github_pull_requests = req.json()
-        all_new_prs = []
+        pr_page = req.json()
+        updated_prs = []  # A container to store all updated PRs in the CURRENT page
         # 将since时间之后的插入，遇到since时间之前的数据直接舍弃
-        for now_github_pull_requests in one_page_github_pull_requests:
-            if now_github_pull_requests['updated_at'] < since:
-                if all_new_prs:
-                    opensearch_api.sync_bulk_github_pull_requests(github_pull_requests=all_new_prs,
+        for pr in pr_page:
+            # Since the PRs are sorted by updated_at, if we meet the PRs updated before since, we should quit the whole
+            # process at this point
+            pr_updated_at = datetime.strptime(pr['updated_at'], '%Y-%m-%dT%H:%M:%SZ').astimezone(timezone.utc)
+            if pr_updated_at < since:
+                if updated_prs:
+                    opensearch_api.sync_bulk_github_pull_requests(github_pull_requests=updated_prs,
                                                                   opensearch_client=opensearch_client,
                                                                   owner=owner, repo=repo, if_sync=1)
                 return pull_requests_numbers
-            all_new_prs.append(now_github_pull_requests)
-            pull_requests_numbers.append(now_github_pull_requests["number"])
+            updated_prs.append(pr)
+            pull_requests_numbers.append(pr["number"])
 
-        if (all_new_prs is not None) and len(all_new_prs) == 0:
+        # If not updated PRs are added to the container, it should break at the point, since all the following PRs are
+        # not updated, and we don't have to handle them.
+        if not updated_prs:
             logger.info(f"sync github pull_requests end to break:{owner}/{repo} page_index:{page}")
             break
 
-        opensearch_api.sync_bulk_github_pull_requests(github_pull_requests=all_new_prs,
+        # If there are some updated PRs after since, they are stored in the container and should be inserted.
+        opensearch_api.sync_bulk_github_pull_requests(github_pull_requests=updated_prs,
                                                       opensearch_client=opensearch_client,
                                                       owner=owner, repo=repo, if_sync=1)
         logger.info(f"success get github pull_requests page:{owner}/{repo} page_index:{page}")
+        page += 1
 
     # 建立 sync 标志
     opensearch_api.set_sync_github_pull_requests_check(opensearch_client=opensearch_client,

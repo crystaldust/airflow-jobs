@@ -7,10 +7,11 @@ from airflow.operators.python import PythonOperator
 from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_GITHUB_ISSUES, \
     OPENSEARCH_INDEX_GITHUB_ISSUES_COMMENTS, OPENSEARCH_INDEX_GITHUB_ISSUES_TIMELINE
 from oss_know.libs.base_dict.variable_key import OPENSEARCH_CONN_DATA, GITHUB_TOKENS, PROXY_CONFS, \
-    DAILY_SYNC_GITHUB_ISSUES_EXCLUDES, CLICKHOUSE_DRIVER_INFO, CK_TABLE_DEFAULT_VAL_TPLT, \
+    CLICKHOUSE_DRIVER_INFO, CK_TABLE_DEFAULT_VAL_TPLT, \
     DAILY_SYNC_GITHUB_ISSUES_INCLUDES, DAILY_SYNC_INTERVAL, DAILY_GITHUB_ISSUES_SYNC_INTERVAL
 from oss_know.libs.github import sync_issues, sync_issues_comments, sync_issues_timelines
 from oss_know.libs.util.base import get_opensearch_client, arrange_owner_repo_into_letter_groups
+from oss_know.libs.util.clickhouse import get_uniq_owner_repos
 from oss_know.libs.util.data_transfer import sync_clickhouse_repos_from_opensearch
 from oss_know.libs.util.opensearch_api import OpensearchAPI
 from oss_know.libs.util.proxy import GithubTokenProxyAccommodator, ProxyServiceProvider, make_accommodator
@@ -58,6 +59,7 @@ with DAG(
                 'repo': repo,
                 'issues_numbers': issues_numbers,
             })
+        # The returned value can be accessed by other tasks with xcom pull
         return issue_number_infos
 
 
@@ -121,20 +123,9 @@ with DAG(
     opensearch_client = get_opensearch_client(opensearch_conn_info=opensearch_conn_info)
     opensearch_api = OpensearchAPI()
 
-    uniq_owner_repos = []
-    includes = Variable.get(DAILY_SYNC_GITHUB_ISSUES_INCLUDES, deserialize_json=True, default_var=None)
-    if not includes:
-        excludes = Variable.get(DAILY_SYNC_GITHUB_ISSUES_EXCLUDES, deserialize_json=True, default_var=None)
-        uniq_owner_repos = opensearch_api.get_uniq_owner_repos(opensearch_client, OPENSEARCH_INDEX_GITHUB_ISSUES,
-                                                               excludes)
-    else:
-        for owner_repo_str, origin in includes.items():
-            owner, repo = owner_repo_str.split('::')
-            uniq_owner_repos.append({
-                'owner': owner,
-                'repo': repo,
-                'origin': origin
-            })
+    uniq_owner_repos = Variable.get(DAILY_SYNC_GITHUB_ISSUES_INCLUDES, deserialize_json=True, default_var=None)
+    if not uniq_owner_repos:
+        uniq_owner_repos = get_uniq_owner_repos(clickhouse_conn_info, OPENSEARCH_INDEX_GITHUB_ISSUES)
 
     task_groups_by_capital_letter = arrange_owner_repo_into_letter_groups(uniq_owner_repos)
     for letter, owner_repos in task_groups_by_capital_letter.items():

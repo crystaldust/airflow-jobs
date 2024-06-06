@@ -10,6 +10,7 @@ from oss_know.libs.base_dict.variable_key import GITHUB_TOKENS, OPENSEARCH_CONN_
     DAILY_SYNC_GITHUB_COMMITS_INCLUDES, DAILY_SYNC_INTERVAL, DAILY_GITHUB_COMMITS_SYNC_INTERVAL
 from oss_know.libs.github.sync_commits import sync_github_commits_opensearch
 from oss_know.libs.util.base import get_opensearch_client, arrange_owner_repo_into_letter_groups
+from oss_know.libs.util.clickhouse import get_uniq_owner_repos
 from oss_know.libs.util.data_transfer import sync_clickhouse_repos_from_opensearch
 from oss_know.libs.util.opensearch_api import OpensearchAPI
 from oss_know.libs.util.proxy import GithubTokenProxyAccommodator, make_accommodator, ProxyServiceProvider
@@ -25,13 +26,6 @@ if not sync_interval:
 with DAG(dag_id='daily_github_commits_sync',  # schedule_interval='*/5 * * * *',
          schedule_interval=sync_interval, start_date=datetime(2021, 1, 1), catchup=False,
          tags=['github', 'daily sync']) as dag:
-    def op_init_daily_github_commits_sync():
-        return 'Start init_daily_github_commits_sync'
-
-
-    op_init_daily_github_commits_sync = PythonOperator(task_id='op_init_daily_github_commits_sync',
-                                                       python_callable=op_init_daily_github_commits_sync)
-
     opensearch_conn_info = Variable.get(OPENSEARCH_CONN_DATA, deserialize_json=True)
 
     github_tokens = Variable.get(GITHUB_TOKENS, deserialize_json=True)
@@ -58,20 +52,10 @@ with DAG(dag_id='daily_github_commits_sync',  # schedule_interval='*/5 * * * *',
     opensearch_client = get_opensearch_client(opensearch_conn_info=opensearch_conn_info)
     opensearch_api = OpensearchAPI()
 
-    uniq_owner_repos = []
-    includes = Variable.get(DAILY_SYNC_GITHUB_COMMITS_INCLUDES, deserialize_json=True, default_var=None)
-    if not includes:
+    uniq_owner_repos = Variable.get(DAILY_SYNC_GITHUB_COMMITS_INCLUDES, deserialize_json=True, default_var=None)
+    if not uniq_owner_repos:
         excludes = Variable.get(DAILY_SYNC_GITHUB_COMMITS_EXCLUDES, deserialize_json=True, default_var=None)
-        uniq_owner_repos = opensearch_api.get_uniq_owner_repos(opensearch_client, OPENSEARCH_INDEX_GITHUB_COMMITS,
-                                                               excludes)
-    else:
-        for owner_repo_str, origin in includes.items():
-            owner, repo = owner_repo_str.split('::')
-            uniq_owner_repos.append({
-                'owner': owner,
-                'repo': repo,
-                'origin': origin
-            })
+        uniq_owner_repos = get_uniq_owner_repos(clickhouse_conn_info, OPENSEARCH_INDEX_GITHUB_COMMITS)
 
     task_groups_by_capital_letter = arrange_owner_repo_into_letter_groups(uniq_owner_repos)
     # prev_op = op_init_daily_github_commits_sync
@@ -92,5 +76,5 @@ with DAG(dag_id='daily_github_commits_sync',  # schedule_interval='*/5 * * * *',
                 "owner_repo_group": owner_repos
             }
         )
-        op_init_daily_github_commits_sync >> op_sync_github_commits_opensearch >> op_sync_github_commits_clickhouse
+        op_sync_github_commits_opensearch >> op_sync_github_commits_clickhouse
         # prev_op = op_sync_github_commits_clickhouse_group

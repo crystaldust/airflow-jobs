@@ -5,7 +5,7 @@ import time
 import requests
 from opensearchpy import OpenSearch
 
-from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_GITHUB_COMMITS, OPENSEARCH_INDEX_CHECK_SYNC_DATA
+from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_GITHUB_COMMITS
 from oss_know.libs.base_dict.options import GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX
 from oss_know.libs.util.github_api import GithubAPI
 from oss_know.libs.util.log import logger
@@ -43,21 +43,24 @@ def sync_github_commits_opensearch(opensearch_conn_info,
         # Try to get the latest commit date(committed_date field) from existing github_commits index
         # And make it the latest checkpoint
         latest_commit_date_str = get_latest_commit_date_str(opensearch_client, owner, repo)
-        if not latest_commit_date_str:
-            raise SyncGithubCommitException(f"没有得到上次github commits {owner}/{repo} 同步的时间")
-        since = datetime.datetime.strptime(latest_commit_date_str, '%Y-%m-%dT%H:%M:%SZ').strftime('%Y-%m-%dT00:00:00Z')
+        if latest_commit_date_str:
+            since = datetime.datetime.strptime(latest_commit_date_str, '%Y-%m-%dT%H:%M:%SZ').strftime(
+                '%Y-%m-%dT00:00:00Z')
     else:
         github_commits_check = commit_checkpoint["hits"]["hits"][0]["_source"]["github"]["commits"]
         since = datetime.datetime.fromtimestamp(github_commits_check["sync_until_timestamp"]).strftime(
             '%Y-%m-%dT00:00:00Z')
-
     # 生成本次同步的时间范围：同步到今天的 00:00:00
-    until = datetime.datetime.now().strftime('%Y-%m-%dT00:00:00Z')
-    logger.info(f'Sync github commits {owner}/{repo} since：{since}，sync until：{until}')
+    until = datetime.datetime.utcnow().strftime('%Y-%m-%dT00:00:00Z')
+    if not since:
+        logger.info(f'Latest github commit date of {owner}/{repo} not found, sync from scratch until {until}')
+    else:
+        logger.info(f'Sync github commits {owner}/{repo} since {since}, until {until}')
 
     session = requests.Session()
     github_api = GithubAPI()
-    for page in range(1, 999999):
+    page = 1
+    while True:
         time.sleep(random.uniform(GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX))
         req = github_api.get_github_commits(http_session=session,
                                             token_proxy_accommodator=token_proxy_accommodator,
@@ -68,19 +71,18 @@ def sync_github_commits_opensearch(opensearch_conn_info,
                                             until=until)
         now_github_commits = req.json()
 
-        if (now_github_commits is not None) and len(now_github_commits) == 0:
-            logger.info(f'get github commits end to break:: {owner}/{repo} page_index:{page}')
+        if not now_github_commits:
+            logger.info(f'get github commits end to break:: {owner}/{repo} page_index: {page}')
             break
 
         opensearch_api.bulk_github_commits(opensearch_client=opensearch_client,
                                            github_commits=now_github_commits,
                                            owner=owner, repo=repo, if_sync=1)
 
-        logger.info(f"success get github commits :: {owner}/{repo} page_index:{page}")
+        logger.info(f"success get {len(now_github_commits)} github commits :: {owner}/{repo} page_index: {page}")
+        page += 1
 
     opensearch_api.set_sync_github_commits_check(opensearch_client, owner, repo, since, until)
-
-    return "END::sync_github_commits"
 
 
 def get_latest_commit_date_str(opensearch_client, owner, repo):
