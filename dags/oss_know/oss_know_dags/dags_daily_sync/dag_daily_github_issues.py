@@ -1,21 +1,17 @@
 from datetime import datetime
 
 from airflow import DAG
-from airflow.models import Variable
-from airflow.operators.python import PythonOperator
 
 from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_GITHUB_ISSUES
-from oss_know.libs.base_dict.variable_key import GITHUB_TOKENS, OPENSEARCH_CONN_DATA, PROXY_CONFS, \
-    CLICKHOUSE_DRIVER_INFO, CK_TABLE_DEFAULT_VAL_TPLT, DAILY_SYNC_GITHUB_ISSUES_INCLUDES
 from oss_know.libs.github.sync_issues import sync_github_issues
-from oss_know.libs.util.base import arrange_owner_repo_into_letter_groups
-from oss_know.libs.util.clickhouse import get_uniq_owner_repos
 from oss_know.libs.util.data_transfer import sync_clickhouse_repos_from_opensearch
-from oss_know.libs.util.proxy import ProxyServiceProvider, GithubTokenProxyAccommodator, make_accommodator
 
 with DAG(dag_id='daily_github_issues_sync',  # schedule_interval='*/5 * * * *',
          schedule_interval=None, start_date=datetime(2021, 1, 1), catchup=False,
          tags=['github', 'daily sync']) as dag:
+    raise DeprecationWarning("This DAG should not be used in production env, since the related comments and timeline"
+                             " info should be updated when syncing issues, so issues sync should not run alone."
+                             "\nRemove this deprecation code to run the DAG ONLY FOR DEBUG/TEST")
     opensearch_conn_info = Variable.get(OPENSEARCH_CONN_DATA, deserialize_json=True)
     clickhouse_conn_info = Variable.get(CLICKHOUSE_DRIVER_INFO, deserialize_json=True)
     table_templates = Variable.get(CK_TABLE_DEFAULT_VAL_TPLT, deserialize_json=True)
