@@ -50,9 +50,10 @@ def sync_github_issues(opensearch_conn_info, owner, repo, token_proxy_accommodat
     github_api = GithubAPI()
     page = 1
     while True:
-        # Token sleep
+        # TODO Sleep a while for tokens to have a rest(might not be necessary)
         time.sleep(random.uniform(GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX))
 
+        # The GitHub api will return all issues that have updated info after 'since'
         req = github_api.get_github_issues(http_session=session, token_proxy_accommodator=token_proxy_accommodator,
                                            owner=owner, repo=repo, page=page, since=since)
 
@@ -76,7 +77,7 @@ def sync_github_issues(opensearch_conn_info, owner, repo, token_proxy_accommodat
     opensearch_api.set_sync_github_issues_check(opensearch_client=opensearch_client, owner=owner, repo=repo,
                                                 now_time=now_time)
 
-    logger.info(f"issues_list:{issues_numbers}")
+    logger.info(f"{owner}/{repo} issues_list: {issues_numbers}")
 
     # issues number，返回给后续task 获取 issues comments & issues timeline
     return issues_numbers, pr_numbers
