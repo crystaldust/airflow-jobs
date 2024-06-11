@@ -75,6 +75,14 @@ MAILLIST_REPO = "maillist_repo"
 # Variables for clickhouse sync
 # Interval to sync clickhouse data from other environments
 CLICKHOUSE_SYNC_INTERVAL = "clickhouse_sync_interval"
+CLICKHOUSE_GITS_SYNC_INTERVAL = 'clickhouse_gits_sync_interval'
+CLICKHOUSE_GITHUB_COMMITS_SYNC_INTERVAL = 'clickhouse_github_commits_sync_interval'
+CLICKHOUSE_GITHUB_PRS_SYNC_INTERVAL = 'clickhouse_github_prs_sync_interval'
+CLICKHOUSE_GITHUB_ISSUES_SYNC_INTERVAL = 'clickhouse_github_issues_sync_interval'
+CLICKHOUSE_GITHUB_ISSUES_COMMENTS_SYNC_INTERVAL = 'clickhouse_github_issues_comments_sync_interval'
+CLICKHOUSE_GITHUB_ISSUES_TIMELINE_SYNC_INTERVAL = 'clickhouse_github_issues_timeline_sync_interval'
+CLICKHOUSE_GITHUB_PROFILE_SYNC_INTERVAL = 'clickhouse_github_profile_sync_interval'
+
 # Clickhouse sync combination type
 # Enum:
 # union: union of local and remote owner repos
