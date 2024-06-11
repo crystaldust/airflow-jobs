@@ -6,14 +6,17 @@ from airflow.models import Variable
 from airflow.operators.python import PythonOperator
 
 from oss_know.libs.base_dict.variable_key import CLICKHOUSE_DRIVER_INFO, SYNC_FROM_CLICKHOUSE_DRIVER_INFO, \
-    CLICKHOUSE_SYNC_INTERVAL, CLICKHOUSE_SYNC_COMBINATION_TYPE, DAILY_SYNC_CLICKHOUSE_GITHUB_ISSUES_INCLUDES
+    CLICKHOUSE_SYNC_INTERVAL, CLICKHOUSE_SYNC_COMBINATION_TYPE, DAILY_SYNC_CLICKHOUSE_GITHUB_ISSUES_INCLUDES, \
+    CLICKHOUSE_GITHUB_ISSUES_SYNC_INTERVAL
 from oss_know.libs.clickhouse.sync_clickhouse_data import sync_from_remote_by_repos, combine_remote_owner_repos
 from oss_know.libs.util.log import logger
 
 clickhouse_conn_info = Variable.get(CLICKHOUSE_DRIVER_INFO, deserialize_json=True)
 sync_from_clickhouse_conn_info = Variable.get(SYNC_FROM_CLICKHOUSE_DRIVER_INFO, deserialize_json=True)
-sync_interval = Variable.get(CLICKHOUSE_SYNC_INTERVAL, default_var=None)
 sync_combination_type = Variable.get(CLICKHOUSE_SYNC_COMBINATION_TYPE, default_var="union")
+sync_interval = Variable.get(CLICKHOUSE_GITHUB_ISSUES_SYNC_INTERVAL, default_var=None)
+if not sync_interval:
+    sync_interval = Variable.get(CLICKHOUSE_SYNC_INTERVAL, default_var=None)
 
 # Daily sync github_issues data from other clickhouse environment by owner/repo
 with DAG(dag_id='daily_github_issues_sync_from_clickhouse',  # schedule_interval='*/5 * * * *',
