@@ -24,7 +24,6 @@ with DAG(dag_id='routinely_calculate_developer_role_metrics',  # schedule_interv
 
     if not uniq_owner_repos:
         # 如果没有在variable中指定需要计算metrics的项目则从库中获取全量的去重后的owner_repo 计算
-        clickhouse_conn_info = Variable.get(CLICKHOUSE_DRIVER_INFO, deserialize_json=True)
         uniq_owner_repos = get_uniq_owner_repos(clickhouse_conn_info, OPENSEARCH_GIT_RAW)
 
 
