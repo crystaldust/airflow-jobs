@@ -93,6 +93,11 @@ CLICKHOUSE_GITHUB_PROFILE_SYNC_INTERVAL = 'clickhouse_github_profile_sync_interv
 # diff_remote: remote owner repos - local owner repos
 CLICKHOUSE_SYNC_COMBINATION_TYPE = "clickhouse_sync_combination_type"
 
+# A list of tables to sync from remote ck, should specify table name and corresponding timestamp col name
+# Example:
+# [ { "table_name": "github_profile", timestamp_col: "search_key__updated_at" } ]
+CLICKHOUSE_SYNC_TABLE_INCLUDES = "clickhouse_sync_table_includes"
+
 # Variables for opensearch sync
 # Interval to sync opensearch data from other environments
 OPENSEARCH_SYNC_INTERVAL = "opensearch_sync_interval"
