@@ -124,3 +124,6 @@ ZULIP_API_KEYS = "zulip_api_keys"
 NEED_INIT_ZULIP = "need_init_zulip"
 
 REPO_CLONE_DIR = "/tmp/gits"
+
+# Middle tables vars
+COMPANY_EMAIL_DOMAIN_MAP = 'company_email_domain_map'
