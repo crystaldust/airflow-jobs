@@ -190,7 +190,7 @@ def extract_graph_from_ck(ck_client, owner, repo):
             author_id = pr2author[pr_num]['id']
             author_login = pr2author[pr_num]['login']
             if 'user' not in timeline or not timeline.get('user'):
-                logger.warning(f'Skip the reviewed event since reviewer info is empty, {timeline}')
+                logger.warning(f'Skip the {event_type} event since reviewer info is empty, {timeline}')
                 continue
 
             reviewer_id = timeline['user']['id']
@@ -219,7 +219,7 @@ def extract_graph_from_ck(ck_client, owner, repo):
             author_login = pr2author[pr_num]['login']
             for comment in timeline['comments']:
                 if 'user' not in comment or not comment.get('user'):
-                    logger.warning(f'Skip the reviewed event since reviewer info is empty, {timeline}')
+                    logger.warning(f'Skip the {event_type} event since user info is empty, {timeline}')
                     continue
 
                 commenter = comment['user']
@@ -247,6 +247,10 @@ def extract_graph_from_ck(ck_client, owner, repo):
         elif event_type == 'merged':
             author_id = pr2author[pr_num]['id']
             author_login = pr2author[pr_num]['login']
+
+            if 'actor' not in timeline or not timeline.get('actor'):
+                logger.warning(f'Skip the {event_type} event since actor info is empty, {timeline}')
+                continue
 
             merger_id = timeline['actor']['id']
             merger_login = timeline['actor']['login']
