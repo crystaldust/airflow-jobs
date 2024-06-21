@@ -246,7 +246,7 @@ def sync_github_profiles_from_remote_ck(local_ck_conn_info, remote_ck_conn_info)
        where search_key__updated_at > {local_latest_updated_at}
     '''
 
-    print(insert_sql)
+    logger.info(insert_sql)
 
     logger.info(f"Syncing github_profile (updated_at > {local_latest_updated_at})")
     local_ck_client.execute_no_params(insert_sql)
@@ -259,6 +259,66 @@ def sync_github_profiles_from_remote_ck(local_ck_conn_info, remote_ck_conn_info)
     result = local_ck_client.execute_no_params(new_insert_count_sql)
     new_insert_count = 0 if not result else result[0][0]
     logger.info(f"Synced {new_insert_count} github_profile rows (updated_at > {local_latest_updated_at})")
+
+
+# A common util to sync data from remote ck
+def sync_data_from_remote_ck(local_ck_conn_info, remote_ck_conn_info, table_name, ts_col):
+    # Sync github profile from a remote clickhouse service to the local clickhouse service, where the
+    # remote data's search_key__updated_at is greater than max local search_key__updated_at
+    local_ck_client = CKServer(host=local_ck_conn_info.get("HOST"),
+                               port=local_ck_conn_info.get("PORT"),
+                               user=local_ck_conn_info.get("USER"),
+                               password=local_ck_conn_info.get("PASSWD"),
+                               database=local_ck_conn_info.get("DATABASE"),
+                               settings={
+                                   "max_execution_time": 1000000,
+                               },
+                               kwargs={
+                                   "connect_timeout": 200,
+                                   "send_receive_timeout": 6000,
+                                   "sync_request_timeout": 100,
+                                   # "connect_timeout_with_failover_ms": 20000,
+                               })
+    local_db = local_ck_conn_info.get("DATABASE")
+
+    remote_host = remote_ck_conn_info.get('HOST')
+    remote_port = remote_ck_conn_info.get('PORT')
+    remote_user = remote_ck_conn_info.get('USER')
+    remote_password = remote_ck_conn_info.get('PASSWD')
+    remote_db = remote_ck_conn_info.get('DATABASE')
+
+    local_latest_ts_sql = f'select max({ts_col}) from {local_db}.{table_name}'
+    # max() will ensure a list with 1 element
+    result = local_ck_client.execute_no_params(local_latest_ts_sql)[0]
+    local_latest_updated_at = result[0] if result else 0
+
+    cols_str = get_table_cols_str(local_ck_client, local_db, table_name)
+    insert_sql = f'''
+    insert into table {local_db}.{table_name}
+    select {cols_str}
+    from remote(
+            '{remote_host}:{remote_port}',
+            '{remote_db}.{table_name}',
+            '{remote_user}',
+            '{remote_password}'
+        )
+       where {ts_col} > {local_latest_updated_at}
+    '''
+
+    logger.info(insert_sql)
+
+    local_ck_client.execute_no_params(FAIL_OVER_TIMEOUT_SETTING_SQL)
+    logger.info(f"Syncing {table_name} ({ts_col} > {local_latest_updated_at})")
+    local_ck_client.execute_no_params(insert_sql)
+
+    # Log for the inserted data
+    new_insert_count_sql = f"""
+        select count() from {local_db}.{table_name}
+        where {ts_col} > {local_latest_updated_at}
+        """
+    result = local_ck_client.execute_no_params(new_insert_count_sql)
+    new_insert_count = 0 if not result else result[0][0]
+    logger.info(f"Synced {new_insert_count} {table_name} rows (updated_at > {local_latest_updated_at})")
 
 
 def get_table_cols(ck_client, db_name, table_name):

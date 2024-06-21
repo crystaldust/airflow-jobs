@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  db:
+    image: mysql:8.0
+    cap_add:
+      - SYS_NICE
+    restart: always
+    environment:
+      - MYSQL_DATABASE=oss-know
+      - MYSQL_ROOT_PASSWORD=oss-know-password
+    ports:
+      - '3306:3306'
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+      #- ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - dev-network
+
+networks:
+  dev-network:
+    external: true
