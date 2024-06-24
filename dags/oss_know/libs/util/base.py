@@ -185,6 +185,36 @@ def do_get_github_result(req_session, url, headers, params, accommodator: Github
     return res
 
 
+@retry(stop=stop_after_attempt(10),
+       wait=wait_fixed(1),
+       retry=(retry_if_exception_type(KeyError) |
+              retry_if_exception_type(json.decoder.JSONDecodeError) |
+              retry_if_exception_type(urllib3.exceptions.HTTPError) |
+              retry_if_exception_type(urllib3.exceptions.MaxRetryError) |
+              retry_if_exception_type(urllib3.exceptions.ProtocolError) |
+              retry_if_exception_type(requests.exceptions.ConnectionError) |
+              retry_if_exception_type(requests.exceptions.ProxyError) |
+              retry_if_exception_type(requests.exceptions.SSLError) |
+              retry_if_exception_type(requests.exceptions.ChunkedEncodingError) |
+              retry_if_exception_type(HttpGetException) |
+              retry_if_exception_type(GithubInternalServerError)))
+def wrap_github_request_session(req_session, url, accommodator: GithubTokenProxyAccommodator):
+    github_token, proxy_url = accommodator.next()
+
+    logger.debug(f'Wrap GitHub request {url} with token {github_token}')
+    req_session.headers.update({'Authorization': 'token %s' % github_token})
+
+    url_scheme, proxy_scheme = urlparse(url), urlparse(proxy_url)
+    if not proxy_scheme or not url_scheme:
+        logger.error(f'At least one scheme not found in urls: {url}, {proxy_url}')
+    # This elif branch is commented because http(s) proxy and request scheme don't have to be the same
+    # elif url_scheme != proxy_scheme:
+    #     logger.warning(f'URL scheme {url_scheme} does not match proxy scheme{proxy_scheme}, skipping')
+    else:
+        req_session.proxies[url_scheme] = proxy_url
+        logger.debug(f'Request url {url} with proxy {proxy_url}')
+
+
 def get_opensearch_client(opensearch_conn_info):
     client = OpenSearch(
         hosts=[{'host': opensearch_conn_info["HOST"], 'port': opensearch_conn_info["PORT"]}],
