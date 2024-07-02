@@ -60,7 +60,7 @@ def parse_user_info(user_info_container, raw_data, login):
 
 def parse_pr_commit_files(container, raw_data, login, g):
     if raw_data.get('errors'):
-        print(f"{login},errors---------------------------------------------")
+        logger.error(f"{login},errors {raw_data.get('errors')}---------------------------------------------")
         return '', False, 0
     end_cursor = raw_data['data']['user']['pullRequests']['pageInfo']['endCursor']
     # try:
@@ -128,7 +128,6 @@ def parse_pr_commit_files(container, raw_data, login, g):
 
 
 def get_pr_commit_files_and_profile_from_logins(os_client, logins, proxy_accommodator):
-    print('[DEBUG] get_pr_commit_files_and_profile_from_logins, logins:', logins)
     for login in logins:
         if login_data_exists(os_client, login):
             time.sleep(2)
@@ -227,7 +226,6 @@ def insert_company_contributor_profile(os_client: OpenSearch, ck_client: CKServe
         bulk_data.append(result['_source'])
 
     success = ck_client.execute("insert into table company_contributor_profile values", bulk_data)
-    print(success)
 
 
 # From user pr commit files(os) to company contributor pr(ck)

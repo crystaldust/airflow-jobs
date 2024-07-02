@@ -33,7 +33,7 @@ with DAG(dag_id='routinely_calculate_pr_event_network_metrics',  # schedule_inte
     def do_calculate_network_metrics_by_routine_class(owner_repo_group):
         calc = MetricGroupRoutineCalculation(NetworkMetricRoutineCalculation,
                                              clickhouse_conn_info, mysql_conn_info,
-                                             owner_repo_group, 'network_metrics')
+                                             owner_repo_group, 'pr_event_network_metrics')
         calc.routine()
 
 

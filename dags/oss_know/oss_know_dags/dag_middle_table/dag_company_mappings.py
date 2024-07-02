@@ -30,6 +30,7 @@ with DAG(dag_id='dag_company_mapping',  # schedule_interval='*/5 * * * *',
          tags=['github', 'middle table'], ) as dag:
     def do_login_company_mapping(company_mappings):
         login_company_map_ck(company_mappings, ck_client)
+        # TODO Create email -> company mapping
 
 
     company_email_domain_map = Variable.get(COMPANY_EMAIL_DOMAIN_MAP, deserialize_json=True)
