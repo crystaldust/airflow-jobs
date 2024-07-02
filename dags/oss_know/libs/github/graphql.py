@@ -66,7 +66,7 @@ class GithubCrawl:
         additions
         deletions
         changedFiles
-        commits(first:100){{
+        commits(first: 100){{
         totalCount
           pageInfo {{
             endCursor
@@ -112,7 +112,7 @@ class GithubCrawl:
             }}
 					}}
         }}
-        files(first:100){{
+        files(first: 100){{
         totalCount
           pageInfo {{
             endCursor
@@ -320,8 +320,8 @@ class GithubCrawl:
         additions
         deletions
         message
-        parents(first:5){{
-          totalCount
+        parents(first: 5){{
+         totalCount
           nodes{{
             oid
           }}
@@ -442,6 +442,7 @@ class GithubCrawl:
             'accept': 'application/vnd.github+json'
         }
         wrap_github_request_session(self.session, self.url, self.proxy_tokens_accommodator)
+        self.session.proxies = {}  # debugging
 
         r = self.session.post(self.url, json={"query": query})
 
@@ -451,6 +452,7 @@ class GithubCrawl:
             self.count += 1
             time.sleep(2)
             logger.info(f'{github_login} :重试次数 {self.count} status_code:{r.status_code}')
+            logger.debug(r.text)
             # print(f'r是什么{r}')
             # print('r.text', r.text)
             # print(f'token是什么：{token}')
