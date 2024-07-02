@@ -27,3 +27,9 @@ OPENSEARCH_ZULIP_USER_GROUP = "zulip_user_group"
 OPENSEARCH_ZULIP_STREAM = "zulip_stream"
 OPENSEARCH_ZULIP_TOPIC = "zulip_topic"
 OPENSEARCH_ZULIP_MESSAGE = "zulip_message"
+
+# Middle tables
+OPENSEARCH_COMPANY_CONTRIBUTOR_PR = 'company_contributor_pr'
+OPENSEARCH_COMPANY_CONTRIBUTOR_PROFILE = 'company_contributor_profile'
+OPENSEARCH_GRAPHQL_USER_INFO = 'graphql_user_info'
+OPENSEARCH_USER_PR_COMMIT_FILES = 'user_pr_commit_files'

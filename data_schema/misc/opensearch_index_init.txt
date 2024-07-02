@@ -21,6 +21,12 @@ PUT github_releases
 PUT check_sync_data
 #--------------------------------------------------------------------
 
+#---- middle tables----
+PUT company_contributor_pr
+PUT company_contributor_profile
+PUT graphql_user_info
+PUT user_pr_commit_files
+
 #--加大timeline可以存储的fields
 PUT github_issues_timeline/_settings
 {

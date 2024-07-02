@@ -3,10 +3,23 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from os import path, makedirs
 
+import docutils.frontend
+import docutils.nodes
+import docutils.parsers.rst
+import docutils.utils
 import git
 
 from oss_know.libs.util.clickhouse_driver import CKServer
 from oss_know.libs.util.log import logger
+
+
+def parse_rst(text: str) -> docutils.nodes.document:
+    parser = docutils.parsers.rst.Parser()
+    components = (docutils.parsers.rst.Parser,)
+    settings = docutils.frontend.OptionParser(components=components).get_default_values()
+    document = docutils.utils.new_document('<rst-doc>', settings=settings)
+    parser.parse(text, document)
+    return document
 
 
 class CodeOwnerWatcher:
@@ -33,11 +46,17 @@ class CodeOwnerWatcher:
     def collect_file_rev_list(self, target_file):
         if not self.git_repo:
             raise ValueError('git repo not initialized')
+        try:
+            shas = self.git_repo.git.rev_list('HEAD', target_file).split()
 
-        shas = self.git_repo.git.rev_list('HEAD', target_file).split()
-        for sha in shas:
-            if sha not in self.envolved_commits_map:
-                self.envolved_commits_map[sha] = True
+            for sha in shas:
+                if sha not in self.envolved_commits_map:
+                    self.envolved_commits_map[sha] = True
+        except git.exc.GitCommandError as e:
+            if e.status == 128:
+                logger.info(f'{target_file} not in HEAD, skip')
+            else:
+                raise e
 
     def collect_local_commits(self):
         """
@@ -79,7 +98,7 @@ class CodeOwnerWatcher:
                 continue
 
             file_content = target_file.data_stream.read().decode('utf-8')
-            developer_info = self.get_developer_info(file_content)
+            developer_info = self.get_developer_info(filepath, file_content)
             self.save_snapshot(sha, commit.authored_datetime, filepath, developer_info)
 
     def get_current_commits(self):
@@ -143,7 +162,7 @@ class CodeOwnerWatcher:
         if rows:
             self.ck_client.execute('insert into table code_owners values', rows)
 
-    def get_developer_info(self, file_path):
+    def get_developer_info(self, file_path, file_content):
         pass
 
     def apply_row_info(self, row, filepath, developer):
@@ -152,21 +171,26 @@ class CodeOwnerWatcher:
 
 class LLVMCodeOwnerWatcher(CodeOwnerWatcher):
     TARGET_FILES = {
-        'libcxx/CREDITS.TXT': True,
-        'libcxxabi/CREDITS.TXT': True,
-        'compiler-rt/CREDITS.TXT': True,
-        'llvm/CREDITS.TXT': True,
-        'pstl/CREDITS.txt': True,
-        'libclc/CREDITS.TXT': True,
-        'openmp/CREDITS.txt': True,
-        'polly/CREDITS.txt': True,
-        'clang-tools-extra/CODE_OWNERS.TXT': True,
-        'compiler-rt/CODE_OWNERS.TXT': True,
-        'llvm/CODE_OWNERS.TXT': True,
-        'flang/CODE_OWNERS.TXT': True,
-        'bolt/CODE_OWNERS.TXT': True,
-        # 'lldb/CODE_OWNERS.txt': True, # changed to a new rst file 2 days ago, need a specific analyzer
-        'lld/CODE_OWNERS.TXT': True,
+        "lldb/CodeOwners.rst": True,
+        "clang/CodeOwners.rst": True,
+        # "clang/docs/CodeOwners.rst": True,  # ref to clang/CodeOwners.rst, skip it
+        "libcxxabi/CREDITS.TXT": True,
+        "llvm/CREDITS.TXT": True,
+        "compiler-rt/CODE_OWNERS.TXT": True,
+        "libclc/CREDITS.TXT": True,
+        "libcxx/CREDITS.TXT": True,
+        "clang-tools-extra/CODE_OWNERS.TXT": True,
+        "flang/CODE_OWNERS.TXT": True,
+        "lldb/CODE_OWNERS.txt": True,
+        "llvm/CODE_OWNERS.TXT": True,
+        "lld/CODE_OWNERS.TXT": True,
+        "bolt/CODE_OWNERS.TXT": True,
+        "pstl/CREDITS.txt": True,
+        "polly/CREDITS.txt": True,
+        ".github/CODEOWNERS": True,
+        "compiler-rt/CREDITS.TXT": True,
+        "libcxx/utils/ci/BOT_OWNERS.txt": True,
+        "openmp/CREDITS.txt": True,
     }
 
     OWNER = 'llvm'
@@ -180,36 +204,100 @@ class LLVMCodeOwnerWatcher(CodeOwnerWatcher):
         'D': 'description'
     }
 
-    def get_developer_info(self, content):
-        current_module = []
-        current_developer = None
+    def get_developer_info(self, file_path: str, content):
+        if str.lower(file_path).endswith('.rst'):
+            return self.get_rst_developer_info(content)
+        return self.get_txt_developer_info(content)
+
+    def parse_info(self, info_line):
+        parts = map(lambda x: x.strip(), info_line.replace('\\@', '@').split(','))
+        structured_info = {}
+        for part in parts:
+            matches = re.findall('(\w.*?)\s*\((.*?)\)', part, re.DOTALL)
+            value, key = matches[0]
+            key = str.lower(key)
+            structured_info[key] = value
+
+        return structured_info
+
+    def get_rst_developer_info(self, content):
+        developers = []
+
+        doc = parse_rst(content)
+        for doc_child in doc.children:
+            for child in doc_child.children:
+                if type(child) is docutils.nodes.section:
+                    for node in child.children:
+                        if type(node) is docutils.nodes.title:
+                            continue
+                        if type(node) is docutils.nodes.section:
+                            current_module = ''
+
+                            for c in node.children:
+                                if type(c) is docutils.nodes.paragraph:
+                                    continue
+
+                                if type(c) is docutils.nodes.title:
+                                    current_module = c.rawsource
+                                elif type(c) is docutils.nodes.line_block:
+                                    name = c.children[0].rawsource
+                                    info = c.children[1].rawsource
+                                    info_dict = self.parse_info(info)
+                                    info_dict['name'] = name
+                                    info_dict['module'] = current_module
+                                    developers.append(info_dict)
+                                elif type(c) is docutils.nodes.section:
+                                    current_module = c[0].rawsource
+                                    for cc in c[1:]:
+                                        name = cc[0].rawsource
+                                        info = cc[1].rawsource
+                                        info_dict = self.parse_info(info)
+                                        info_dict['name'] = name
+                                        info_dict['module'] = current_module
+                                        developers.append(info_dict)
+
+        return developers
+
+    def get_txt_developer_info(self, content):
+        all_developers = []  # All developers of diff modules in the current file
+        current_developers = []
         for raw_line in content.split('\n'):
             line = raw_line.strip()
             if re.search('[NEHD]:\ ', line):
                 if line.startswith('N:'):
                     # Append the previously stored developer info
                     # and move to the next one
-                    if current_developer:
-                        current_module.append(current_developer)
+                    if current_developers:
+                        all_developers += current_developers
 
-                    name = line.split(': ')[-1]
-                    current_developer = {
-                        "name": name
-                    }
+                    names = map(str.strip, line.split(':')[-1].split(','))
+                    current_developers = [{'name': n} for n in names]
+                elif line.startswith('E:'):
+                    emails = list(map(str.strip, line.split(':')[-1].split(',')))
+                    key = LLVMCodeOwnerWatcher.KEY_MAP['E']
+                    try:
+                        for index, email in enumerate(emails):
+                            current_developers[index][key] = email
+                    except IndexError as e:
+                        logger.warning('Length of emails and developers are not the same, it is likely that one '
+                                       'developer has multiple emails')
+                        logger.info(f'Developers: {current_developers}, emails: {emails}')
                 else:
-                    parts = line.split(': ')
+                    parts = list(map(str.strip, line.split(':')))
                     key = LLVMCodeOwnerWatcher.KEY_MAP[parts[0]]
                     val = parts[1]
-                    current_developer[key] = val
+                    for d in current_developers:
+                        d[key] = val
 
-        # Don't forget the last developer
-        if current_developer:
-            current_module.append(current_developer)
+        # Don't forget the last developers
+        if current_developers:
+            all_developers += current_developers
 
-        return current_module
+        return all_developers
 
     def apply_row_info(self, row, filepath, developer):
-        row['module'] = filepath
+        # Another possible condition control is to check the filepath with .rst suffix
+        row['module'] = developer['module'] if 'module' in developer else filepath
         row['name'] = developer.get('name') or ''
         row['email'] = developer.get('email') or ''
         row['github_login'] = ''
@@ -231,7 +319,7 @@ class PytorchCodeOwnerWatcher(CodeOwnerWatcher):
         developers = list(map(lambda d: d.strip().replace('@', ''), parts[1:]))
         return module_path, developers
 
-    def get_developer_info(self, code_owner_content):
+    def get_developer_info(self, filepath, code_owner_content):
         desc = ''
         analyzing_modules = False
 
