@@ -13,15 +13,6 @@ from oss_know.libs.util.clickhouse_driver import CKServer
 from oss_know.libs.util.log import logger
 
 
-def parse_rst(text: str) -> docutils.nodes.document:
-    parser = docutils.parsers.rst.Parser()
-    components = (docutils.parsers.rst.Parser,)
-    settings = docutils.frontend.OptionParser(components=components).get_default_values()
-    document = docutils.utils.new_document('<rst-doc>', settings=settings)
-    parser.parse(text, document)
-    return document
-
-
 class CodeOwnerWatcher:
     TARGET_FILES = {}
     BATCH_SIZE = 5000
@@ -29,10 +20,11 @@ class CodeOwnerWatcher:
     REPO = ''
     ORIGIN = ''
 
-    def __init__(self, local_repo_dir, ck_conn_info):
+    def __init__(self, local_repo_dir, ck_conn_info, rev_list_params=None):
         self.local_repo_path = f'{local_repo_dir}/{self.__class__.OWNER}/{self.__class__.REPO}'
         logger.info(f'Init repo {self.__class__.OWNER}/{self.__class__.REPO} to {self.local_repo_path}')
         self.git_repo = None
+        self.rev_list_params = rev_list_params if rev_list_params else []
         self.envolved_commits_map = {}
         self.envolved_commits = []
         self.ck_client = CKServer(
@@ -47,7 +39,8 @@ class CodeOwnerWatcher:
         if not self.git_repo:
             raise ValueError('git repo not initialized')
         try:
-            shas = self.git_repo.git.rev_list('HEAD', target_file).split()
+            arguments = self.rev_list_params + ['HEAD', target_file]
+            shas = self.git_repo.git.rev_list(*arguments).split()
 
             for sha in shas:
                 if sha not in self.envolved_commits_map:
@@ -206,9 +199,10 @@ class LLVMCodeOwnerWatcher(CodeOwnerWatcher):
 
     def get_developer_info(self, file_path: str, content):
         if str.lower(file_path).endswith('.rst'):
-            return self.get_rst_developer_info(content)
-        return self.get_txt_developer_info(content)
+            return LLVMCodeOwnerWatcher.get_rst_developer_info(content)
+        return LLVMCodeOwnerWatcher.get_txt_developer_info(content)
 
+    @staticmethod
     def parse_info(self, info_line):
         parts = map(lambda x: x.strip(), info_line.replace('\\@', '@').split(','))
         structured_info = {}
@@ -220,10 +214,20 @@ class LLVMCodeOwnerWatcher(CodeOwnerWatcher):
 
         return structured_info
 
+    @staticmethod
+    def parse_rst(text: str) -> docutils.nodes.document:
+        parser = docutils.parsers.rst.Parser()
+        components = (docutils.parsers.rst.Parser,)
+        settings = docutils.frontend.OptionParser(components=components).get_default_values()
+        document = docutils.utils.new_document('<rst-doc>', settings=settings)
+        parser.parse(text, document)
+        return document
+
+    @staticmethod
     def get_rst_developer_info(self, content):
         developers = []
 
-        doc = parse_rst(content)
+        doc = LLVMCodeOwnerWatcher.parse_rst(content)
         for doc_child in doc.children:
             for child in doc_child.children:
                 if type(child) is docutils.nodes.section:
@@ -242,7 +246,7 @@ class LLVMCodeOwnerWatcher(CodeOwnerWatcher):
                                 elif type(c) is docutils.nodes.line_block:
                                     name = c.children[0].rawsource
                                     info = c.children[1].rawsource
-                                    info_dict = self.parse_info(info)
+                                    info_dict = LLVMCodeOwnerWatcher.parse_info(info)
                                     info_dict['name'] = name
                                     info_dict['module'] = current_module
                                     developers.append(info_dict)
@@ -251,13 +255,14 @@ class LLVMCodeOwnerWatcher(CodeOwnerWatcher):
                                     for cc in c[1:]:
                                         name = cc[0].rawsource
                                         info = cc[1].rawsource
-                                        info_dict = self.parse_info(info)
+                                        info_dict = LLVMCodeOwnerWatcher.parse_info(info)
                                         info_dict['name'] = name
                                         info_dict['module'] = current_module
                                         developers.append(info_dict)
 
         return developers
 
+    @staticmethod
     def get_txt_developer_info(self, content):
         all_developers = []  # All developers of diff modules in the current file
         current_developers = []
@@ -355,3 +360,83 @@ class PytorchCodeOwnerWatcher(CodeOwnerWatcher):
         row['email'] = ''
         row['github_login'] = github_login
         row['misc'] = json.dumps({'description': desc})
+
+
+class KernelCodeOwnerWatcher(CodeOwnerWatcher):
+    TARGET_FILES = {
+        'MAINTAINERS': True,
+        'CREDITS': True,
+    }
+
+    OWNER = 'torvalds'
+    REPO = 'linux'
+    ORIGIN = 'https://github.com/torvalds/linux'
+
+    # @staticmethod
+    # def analyze_module_line(line):
+    #     parts = line.split()
+    #     module_path = parts[0]
+    #     developers = list(map(lambda d: d.strip().replace('@', ''), parts[1:]))
+    #     return module_path, developers
+
+    @staticmethod
+    def get_name_email(line):
+        if '<' not in line:
+            email = line.strip()
+            return '', email
+
+        parts = line.replace('M:', '').strip().split('<')
+        name = parts[0]
+        try:
+            email = parts[1][:-1]
+        except IndexError as e:
+            print(e)
+        return name, email
+
+    @staticmethod
+    def get_owner_info_from_maintainers(file_path, file_content):
+        splitter = '''Maintainers List\n----------------'''
+        parts = file_content.split(splitter)
+        maintainer_blocks = parts[1].split('\n\n')[2:]
+        maintainer_infos = []
+
+        for maintainer_block in maintainer_blocks:
+            lines = maintainer_block.split('\n')
+            module = lines[0].strip()
+            maintainers = []
+            reviewers = []
+            files = []
+
+            for line in lines[1:]:
+                if line.startswith('M:'):
+                    name, email = KernelCodeOwnerWatcher.get_name_email(line)
+                    maintainers.append((name, email))
+                    # parts = line.split()
+                    # print(parts)
+                elif line.startswith('R:'):
+                    name, email = KernelCodeOwnerWatcher.get_name_email(line)
+                    reviewers.append((name, email))
+                elif line.startswith('F:'):
+                    file_path = line.replace('F:', '').strip()
+                    files.append(file_path)
+            for name, email in maintainers:
+                maintainer_infos.append((module, name, email, 'maintainer'))
+            for name, email in reviewers:
+                maintainer_infos.append((module, name, email, 'reviewer'))
+            # maintainer_infos.append((module, maintainers, reviewers))
+
+        return maintainer_infos
+
+    def get_developer_info(self, filepath, code_owner_content):
+        if filepath == 'MAINTAINERS':
+            return KernelCodeOwnerWatcher.get_owner_info_from_maintainers(filepath, code_owner_content)
+        elif filepath == 'CREDITS':
+            return []
+
+    def apply_row_info(self, row, filepath, developer_tup):
+        module, name, email, owner_type = developer_tup
+        row['module'] = module
+        row['name'] = name
+        row['email'] = email
+        row['misc'] = json.dumps({'owner_type': owner_type})
+        row['github_login'] = ''
