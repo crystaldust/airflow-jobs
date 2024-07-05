@@ -27,6 +27,7 @@ class CodeOwnerWatcher:
         self.git_repo = None
         self.rev_list_params = rev_list_params if rev_list_params else []
         self.envolved_commits_map = {}
+        self.file_commits_map = {}  # Not used yet for now, just for debugging
         self.envolved_commits = []
         self.ck_client = CKServer(
             host=ck_conn_info['HOST'],
@@ -37,6 +38,7 @@ class CodeOwnerWatcher:
         )
 
     def collect_file_rev_list(self, target_file):
+        self.file_commits_map[target_file] = []
         if not self.git_repo:
             raise ValueError('git repo not initialized')
         try:
@@ -44,9 +46,11 @@ class CodeOwnerWatcher:
             shas = self.git_repo.git.rev_list(*arguments).split()
 
             for sha in shas:
+                self.file_commits_map[target_file].append(sha)
                 if sha not in self.envolved_commits_map:
-                    # TODO It's better to store file list in the value of self.envolved_commits_map[sha]
-                    self.envolved_commits_map[sha] = True
+                    self.envolved_commits_map[sha] = [target_file]
+                else:
+                    self.envolved_commits_map[sha].append(target_file)
         except git.exc.GitCommandError as e:
             if e.status == 128:
                 logger.info(f'{target_file} not in HEAD, skip')
@@ -71,7 +75,7 @@ class CodeOwnerWatcher:
         if path.exists(self.local_repo_path):
             logger.info(f'Repo {repo_name} exists, pull origin')
             self.git_repo = git.Repo(self.local_repo_path)
-            # self.git_repo.remotes.origin.pull()
+            self.git_repo.remotes.origin.pull()
         else:
             logger.info(f'Repo {repo_name} does not exist, clone from remote')
             makedirs(self.local_repo_path, exist_ok=True)
@@ -85,9 +89,7 @@ class CodeOwnerWatcher:
     def take_snapshot(self, sha):
         commit = self.git_repo.commit(sha)
         logger.debug(f'[DEBUG] handling commit {sha}')
-        # TODO If self.envolved_commits_map's value is the related file list of the commit's sha
-        #  then we just loop through the necessary files, making much less efforts
-        for filepath in self.__class__.TARGET_FILES:
+        for filepath in self.envolved_commits_map[sha]:
             try:
                 target_file = commit.tree / filepath
             except KeyError as e:
@@ -978,8 +980,8 @@ class K8SCodeOwnerWatcher(CodeOwnerWatcher):
         owners_yaml = None
         try:
             owners_yaml = yaml.safe_load(code_owner_content)
-        except yaml.scanner.ScannerError as e:
-            logger.error(f'Failed to parse {filepath}, content:\n{code_owner_content}')
+        except (yaml.scanner.ScannerError, yaml.parser.ParserError) as e:
+            logger.error(f'Failed to parse {filepath}, content:\n{code_owner_content}\nError: {e}')
             return []
 
         if not owners_yaml:
