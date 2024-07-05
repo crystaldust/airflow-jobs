@@ -5,7 +5,8 @@ from airflow.models import Variable
 from airflow.operators.python import PythonOperator
 
 from oss_know.libs.base_dict.variable_key import GIT_SAVE_LOCAL_PATH, CLICKHOUSE_DRIVER_INFO, DAILY_SYNC_INTERVAL
-from oss_know.libs.github.code_owner import LLVMCodeOwnerWatcher, PytorchCodeOwnerWatcher
+from oss_know.libs.github.code_owner import LLVMCodeOwnerWatcher, PytorchCodeOwnerWatcher, KernelCodeOwnerWatcher, \
+    K8SCodeOwnerWatcher
 
 git_repo_path = Variable.get(GIT_SAVE_LOCAL_PATH, deserialize_json=True)
 ck_conn_info = Variable.get(CLICKHOUSE_DRIVER_INFO, deserialize_json=True)
@@ -19,7 +20,12 @@ with DAG(dag_id='dag_watch_code_owners', schedule_interval=sync_interval,
         watcher.watch()
 
 
-    for cls in [LLVMCodeOwnerWatcher, PytorchCodeOwnerWatcher]:
+    for cls in [
+        LLVMCodeOwnerWatcher,
+        PytorchCodeOwnerWatcher,
+        KernelCodeOwnerWatcher,
+        K8SCodeOwnerWatcher
+    ]:
         owner = cls.OWNER
         repo = cls.REPO
         operator = PythonOperator(
