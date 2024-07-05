@@ -403,7 +403,12 @@ class KernelCodeOwnerWatcher(CodeOwnerWatcher):
     def get_owner_info_from_maintainers(file_path, file_content):
         splitter = '''Maintainers List\n----------------'''
         parts = file_content.split(splitter)
-        maintainer_blocks = parts[1].split('\n\n')[2:]
+        try:
+            maintainer_blocks = parts[1].split('\n\n')[2:]
+        except IndexError as e:
+            logger.error(f'Failed to parse {file_path}, content:\n{file_content}\nError: {e}')
+            return []
+
         maintainer_infos = []
 
         for maintainer_block in maintainer_blocks:

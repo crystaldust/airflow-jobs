@@ -14,17 +14,17 @@ sync_interval = Variable.get(DAILY_SYNC_INTERVAL, default_var=None)
 
 with DAG(dag_id='dag_watch_code_owners', schedule_interval=sync_interval,
          start_date=datetime(2021, 1, 1), catchup=False, tags=['analysis'], concurrency=5) as dag:
-    def do_watch(watcher_class):
-        watcher = watcher_class(git_repo_path['PATH'], ck_conn_info)
+    def do_watch(watcher_class, rev_list_params):
+        watcher = watcher_class(git_repo_path['PATH'], ck_conn_info, rev_list_params=rev_list_params)
         watcher.init()
         watcher.watch()
 
 
-    for cls in [
-        LLVMCodeOwnerWatcher,
-        PytorchCodeOwnerWatcher,
-        KernelCodeOwnerWatcher,
-        K8SCodeOwnerWatcher
+    for cls, extra_params in [
+        (LLVMCodeOwnerWatcher, []),
+        (PytorchCodeOwnerWatcher, []),
+        (KernelCodeOwnerWatcher, ['--since=01-01-2022']),
+        (K8SCodeOwnerWatcher, []),
     ]:
         owner = cls.OWNER
         repo = cls.REPO
@@ -32,6 +32,7 @@ with DAG(dag_id='dag_watch_code_owners', schedule_interval=sync_interval,
             task_id=f'watch_{owner}_{repo}',
             python_callable=do_watch,
             op_kwargs={
-                'watcher_class': cls
+                'watcher_class': cls,
+                'rev_list_params': extra_params,
             },
         )
