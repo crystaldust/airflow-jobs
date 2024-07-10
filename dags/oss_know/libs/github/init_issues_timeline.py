@@ -1,3 +1,4 @@
+from datetime import datetime
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -25,31 +26,46 @@ def init_sync_github_issues_timeline(opensearch_conn_info, owner, repo, token_pr
         ssl_assert_hostname=False,
         ssl_show_warn=False
     )
-
     # 根据指定的 owner/repo , 获取现在所有的 issues，并根据所有 issues 便利相关的 timeline
+    query_body = {
+        "query": {
+            "bool": {
+                "must": [
+                    {
+                        "term": {
+                            "search_key.owner.keyword": {
+                                "value": owner
+                            }
+                        }
+                    },
+                    {
+                        "term": {
+                            "search_key.repo.keyword": {
+                                "value": repo
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    }
+    if since:
+        # Try to validate since with format, if parse fails, just let the error throw to stop the operation
+        datetime.strptime(since, '%Y-%m-%dT%H:%M:%SZ')
+
+        query_body['query']['bool']['must'].append({
+            "range": {
+                "raw_data.created_at": {
+                    "gte": since
+                }
+            }
+        })
+    logger.info(f'Getting issues for issues timeline with OpenSearch query {query_body}')
     scan_results = opensearch_helpers.scan(opensearch_client,
                                            index=OPENSEARCH_INDEX_GITHUB_ISSUES,
-                                           query={
-                                               "query": {
-                                                   "bool": {"must": [
-                                                       {"term": {
-                                                           "search_key.owner.keyword": {
-                                                               "value": owner
-                                                           }
-                                                       }},
-                                                       {"term": {
-                                                           "search_key.repo.keyword": {
-                                                               "value": repo
-                                                           }
-                                                       }}
-                                                   ]}
-                                               }
-                                           },
+                                           query=query_body,
                                            request_timeout=120,
                                            )
-    need_init_all_results = []
-    for now_item in scan_results:
-        need_init_all_results.append(now_item)
 
     # 不要在dag or task里面 创建index 会有并发异常！！！
     # if not opensearch_client.indices.exists("github_issues"):
@@ -57,22 +73,7 @@ def init_sync_github_issues_timeline(opensearch_conn_info, owner, repo, token_pr
 
     # 由于需要初始化幂等要求，在重新初始化前删除对应owner/repo 指定的 issues_timeline 记录的所有数据
     del_result = opensearch_client.delete_by_query(index=OPENSEARCH_INDEX_GITHUB_ISSUES_TIMELINE,
-                                                   body={
-                                                       "query": {
-                                                           "bool": {"must": [
-                                                               {"term": {
-                                                                   "search_key.owner.keyword": {
-                                                                       "value": owner
-                                                                   }
-                                                               }},
-                                                               {"term": {
-                                                                   "search_key.repo.keyword": {
-                                                                       "value": repo
-                                                                   }
-                                                               }}
-                                                           ]}
-                                                       }
-                                                   },
+                                                   body=query_body,
                                                    request_timeout=120,
                                                    )
 
@@ -80,14 +81,13 @@ def init_sync_github_issues_timeline(opensearch_conn_info, owner, repo, token_pr
 
     get_timeline_fails_results = list()
 
-    def handle_batch(batch):
+    def handle_batch(num_batch):
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = []
-            for idx, now_item in enumerate(batch):
-                number = now_item["_source"]["raw_data"]["number"]
+            for number in num_batch:
                 futures.append(
-                    executor.submit(do_get_github_timeline, opensearch_client, token_proxy_accommodator, owner, repo,
-                                    number))
+                    executor.submit(do_get_github_timeline,
+                                    opensearch_client, token_proxy_accommodator, owner, repo, number))
             for f in as_completed(futures):
                 status_code, msg = f.result()
                 if status_code != 200:
@@ -97,11 +97,17 @@ def init_sync_github_issues_timeline(opensearch_conn_info, owner, repo, token_pr
     batch_size = 10  # 10 timelines data in a batch
     num_handled = 0
     batch = []
-    for idx, timeline_data in enumerate(need_init_all_results):
-        batch.append(timeline_data)
+
+    # Fetch all the issue numbers from scan_result, this is not necessary programmatically, while the scan result is an
+    # iterator which hide everything underneath, if we loop on the iter and do some time-consuming job(like fetching
+    # timeline data), the search context might be cleaned up and bring fails on search, it's discussed by the thread:
+    # https://discuss.elastic.co/t/what-does-no-search-context-found-for-id-mean/103316/9
+    issue_nums = [issue['_source']['raw_data']['number'] for issue in scan_results]
+    for issue_num in issue_nums:
+        batch.append(issue_num)
         if len(batch) >= batch_size:
             handle_batch(batch)
-            num_handled += batch_size
+            num_handled += len(batch)
             batch.clear()
 
             logger.info(f'{num_handled} timeline data processed')
