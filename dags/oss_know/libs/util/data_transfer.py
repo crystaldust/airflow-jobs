@@ -30,8 +30,9 @@ def sync_clickhouse_repos_from_opensearch(owner_repos, index_name, opensearch_co
 
 # Copy the data from opensearch to clickhouse, whose 'updated_at' is greater than the max 'updated_at'
 # in ClickHouse
+# The 'since' parameter is to filter some GitHub resources by the 'created_at' property
 def sync_clickhouse_from_opensearch(owner, repo, index_name, opensearch_conn_info,
-                                    table_name, clickhouse_conn_info, row_template):
+                                    table_name, clickhouse_conn_info, row_template, since=None):
     ck_client = CKServer(
         host=clickhouse_conn_info.get('HOST'),
         port=clickhouse_conn_info.get('PORT'),
@@ -78,7 +79,18 @@ def sync_clickhouse_from_opensearch(owner, repo, index_name, opensearch_conn_inf
             }
         }
         os_search_query['query']['bool']['must'].append(range_condition)
-    logger.info(f'Query opensearch {index_name} with {os_search_query}')
+
+    if since:
+        range_condition = {
+            "range": {
+                "raw_data.created_at": {
+                    "gte": since
+                }
+            }
+        }
+        os_search_query['query']['bool']['must'].append(range_condition)
+
+    logger.info(f'Query opensearch {index_name} with {json.dumps(os_search_query)}')
     opensearch_to_clickhouse(os_client, index_name, os_search_query,
                              ck_client, table_template=row_template, table_name=table_name)
 
@@ -351,6 +363,27 @@ TIMELINE_RAW_DATA_ESSENTIAL_KEYS = [
 
 
 def attach_timeline_raw_data_keys(data_to_insert, timeline_raw_dict):
+    # The timeline row def:
+    # '''
+    #         actor_id               Int64,
+    #         actor_login            String,
+    #         commit_id              String,
+    #         commit_url             String,
+    #         created_at             DateTime64(3),
+    #         id                     Int64,
+    #         node_id                String,
+    #         source_issue_number    Int64,
+    #         timeline_raw           String,
+    #         url                    String,
+    #
+    #         ck_data_insert_at      Int64,
+    #         search_key__event      String,
+    #         search_key__number     Int64,
+    #         search_key__owner      String,
+    #         search_key__repo       String,
+    #         search_key__updated_at Int64
+    # '''
+
     for key in TIMELINE_RAW_DATA_ESSENTIAL_KEYS:
         # The key might exist and hold a None value, then get return None
         # Notice that default_val only takes effect when key doesn't exist
@@ -360,9 +393,17 @@ def attach_timeline_raw_data_keys(data_to_insert, timeline_raw_dict):
             default_val = '1970-1-1'
             data_to_insert[key] = parse(timeline_raw_dict.get(key, default_val) or default_val)
         else:
-            if key == 'id' or key == 'source_issue_number' or key == 'actor_id':
+            if key == 'id' or key == 'source_issue_number':
                 default_val = 0
             data_to_insert[key] = timeline_raw_dict.get(key, default_val) or default_val
+
+    # The actor cols are nested in raw os doc
+    if timeline_raw_dict.get('actor', None):
+        actor = timeline_raw_dict.get('actor')
+        if 'id' in actor:
+            data_to_insert['actor_id'] = actor['id']
+        if 'login' in actor:
+            data_to_insert['actor_login'] = actor['login']
 
 
 def try_parsing_date(text):
