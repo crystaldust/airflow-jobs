@@ -1,16 +1,14 @@
-import random
 import datetime
-import requests
+import random
 import time
-import itertools
 
+import requests
 from opensearchpy import OpenSearch
 
-from oss_know.libs.base_dict.opensearch_index import OPENSEARCH_INDEX_CHECK_SYNC_DATA, OPENSEARCH_INDEX_GITHUB_ISSUES
-from oss_know.libs.util.github_api import GithubAPI
-from oss_know.libs.util.opensearch_api import OpensearchAPI
-from oss_know.libs.util.log import logger
 from oss_know.libs.base_dict.options import GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX
+from oss_know.libs.util.github_api import GithubAPI
+from oss_know.libs.util.log import logger
+from oss_know.libs.util.opensearch_api import OpensearchAPI
 
 
 def init_github_issues(opensearch_conn_infos, owner, repo, token_proxy_accommodator, since=None):
@@ -28,8 +26,9 @@ def init_github_issues(opensearch_conn_infos, owner, repo, token_proxy_accommoda
     session = requests.Session()
     github_api = GithubAPI()
     opensearch_api = OpensearchAPI()
-
-    for page in range(1, 100000):
+    page = 1
+    logger.info(f'Fetching github issues of {owner}/{repo}' + f' since {since}' if since else '')
+    while True:
         # Token sleep
         time.sleep(random.uniform(GITHUB_SLEEP_TIME_MIN, GITHUB_SLEEP_TIME_MAX))
 
@@ -38,7 +37,7 @@ def init_github_issues(opensearch_conn_infos, owner, repo, token_proxy_accommoda
                                            owner=owner, repo=repo, page=page, since=since)
         one_page_github_issues = req.json()
 
-        if (one_page_github_issues is not None) and len(one_page_github_issues) == 0:
+        if not one_page_github_issues:
             logger.info(f"init sync github issues end to break:{owner}/{repo} page_index:{page}")
             break
 
@@ -48,6 +47,7 @@ def init_github_issues(opensearch_conn_infos, owner, repo, token_proxy_accommoda
                                           owner=owner, repo=repo, if_sync=0)
 
         logger.info(f"success get github issues page:{owner}/{repo} page_index:{page}")
+        page += 1
 
     # 建立 sync 标志
     opensearch_api.set_sync_github_issues_check(opensearch_client, owner, repo, now_time)
