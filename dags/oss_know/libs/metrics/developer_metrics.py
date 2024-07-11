@@ -1,8 +1,7 @@
-import json
-
 import networkx as nx
-from networkx.exception import PowerIterationFailedConvergence
 from clickhouse_driver.errors import ServerException as ClickHouseServerException
+from networkx.exception import PowerIterationFailedConvergence
+
 from oss_know.libs.metrics.influence_metrics import MetricRoutineCalculation
 from oss_know.libs.util.log import logger
 
@@ -23,53 +22,28 @@ class PrivilegeEventsMetricRoutineCalculation(MetricRoutineCalculation):
 
         privilege_sql_ = f"""
         WITH {PrivilegeEventsMetricRoutineCalculation.privileged_events_list} as privileged_events
-        SELECT search_key__event, timeline_raw FROM github_issues_timeline 
-        WHERE search_key__owner = '{self.owner}' AND search_key__repo = '{self.repo}'
-        and has(privileged_events, search_key__event)
+        SELECT search_key__owner,
+               search_key__repo,
+               toYYYYMM(created_at)                                                   as year_month,
+               JSONExtractString(JSONExtractString(timeline_raw, 'actor'), 'login') as _actor_login,
+               groupArray(distinct search_key__event)                                 as the_privileged_events
+        FROM github_issues_timeline
+        WHERE search_key__owner = '{self.owner}'
+          AND search_key__repo = '{self.repo}'
+          and has(privileged_events, search_key__event)
+          and _actor_login != ''
+        group by search_key__owner, search_key__repo, year_month, _actor_login;
         """
 
         # TODO Even with constraints on search_key__event, an iterator is essential when data expands
         #  to a large scale.
         privilege_results = self.clickhouse_client.execute_no_params(privilege_sql_)
-        response = []
-
-        privilege_map = {}
-        for (event_type, timeline_raw) in privilege_results:
-            try:
-                raw_data = json.loads(timeline_raw)
-            except json.decoder.JSONDecodeError as e:
-                logger.error(f'Failed to parse timeline_raw {timeline_raw}, skip')
-                continue
-
-            try:
-                dev = raw_data['actor']
-                dev_name = dev['login']
-            except (KeyError, TypeError) as e:
-                logger.error(f'Failed to fetch actor login from {raw_data}: {e}, skip')
-                continue
-
-            if dev_name not in privilege_map:
-                privilege_map[dev_name] = [0] * 14
-            index = event_type_index_map[event_type]
-            privilege_map[dev_name][index] = 1
-
-        for dev, events in privilege_map.items():
-            row = [self.owner, self.repo, dev]
-            row.extend(events)
-            response.append(row)
-
-        logger.info(f'{len(response)} Privilege Events Metrics calculated on {self.owner}/{self.repo}')
-        return response
+        logger.info(f'{len(privilege_results)} Privilege Events Metrics calculated on {self.owner}/{self.repo}')
+        return privilege_results
 
     def save_metrics(self):
         logger.info(f'Saving Privilege Events Metrics of {self.owner}/{self.repo}')
-        # TODO The string literal can be stored as static class property
-        privilege_events_insert_query = f'''
-            INSERT INTO {self.table_name} (search_key__owner, search_key__repo, actor_login, added_to_project, 
-            converted_note_to_issue, deployed, deployment_environment_changed, locked, merged, moved_columns_in_project,
-            pinned, removed_from_project, review_dismissed, transferred, unlocked, unpinned, user_blocked)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s, %s, %s, %s, %s, %s)'''
-        self.batch_insertion(insert_query=privilege_events_insert_query, batch=self.batch)
+        self.clickhouse_client.execute(f'INSERT INTO {self.table_name} VALUES ', self.batch)
 
 
 class CountMetricRoutineCalculation(MetricRoutineCalculation):

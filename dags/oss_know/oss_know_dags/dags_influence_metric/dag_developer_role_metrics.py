@@ -38,7 +38,7 @@ with DAG(dag_id='routinely_calculate_developer_role_metrics',  # schedule_interv
 
 
     class_table_names = [
-        (PrivilegeEventsMetricRoutineCalculation, "privilege_events"),
+        (PrivilegeEventsMetricRoutineCalculation, "privileged_events"),
         (CountMetricRoutineCalculation, "developer_contrib_count_metrics"),
         (NetworkMetricRoutineCalculation, "developer_role_network_metrics"),
     ]
