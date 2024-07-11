@@ -48,9 +48,7 @@ class CodeOwnerWatcher:
             for sha in shas:
                 self.file_commits_map[target_file].append(sha)
                 if sha not in self.envolved_commits_map:
-                    self.envolved_commits_map[sha] = [target_file]
-                else:
-                    self.envolved_commits_map[sha].append(target_file)
+                    self.envolved_commits_map[sha] = True
         except git.exc.GitCommandError as e:
             if e.status == 128:
                 logger.info(f'{target_file} not in HEAD, skip')
@@ -89,7 +87,7 @@ class CodeOwnerWatcher:
     def take_snapshot(self, sha):
         commit = self.git_repo.commit(sha)
         logger.debug(f'[DEBUG] handling commit {sha}')
-        for filepath in self.envolved_commits_map[sha]:
+        for filepath in self.__class__.TARGET_FILES:
             try:
                 target_file = commit.tree / filepath
             except KeyError as e:
